@@ -55,7 +55,7 @@ Key principles:
 | 0 | Skeleton: uv, ruff, mypy, pytest, pre-commit, CI | ✅ |
 | 1 | Data foundation: ingest + validation, EDA, data quality findings | ✅ |
 | 2 | Baseline + first model: features, time-aware CV, MLflow, calibration | ✅ |
-| 3 | Serving: FastAPI, Docker, deploy | 🔜 |
+| 3 | Serving: FastAPI, Docker, deploy | ✅ |
 | 4 | Live loop: DB API fetcher, ground truth, monitoring | 🔜 |
 | 5 | Automated retraining, champion/challenger, README polish | 🔜 |
 | 6 | Thin demo frontend | 🔜 |
@@ -109,14 +109,16 @@ From full-dataset EDA over 148.4M rows ([notebook](notebooks/01_eda.ipynb)):
 
 ## API
 
-The trained bundle is served by a FastAPI app (interactive docs at `/docs`).
+**Live at [db-delay-api.keremalemdar.de](https://db-delay-api.keremalemdar.de/docs)** —
+deployed on a Hetzner VPS via Coolify (Docker, HTTPS, healthchecked). Interactive
+docs at [`/docs`](https://db-delay-api.keremalemdar.de/docs).
 
 ```bash
 make serve   # local; or: docker compose up --build
 ```
 
 ```bash
-curl -X POST http://localhost:8000/predict \
+curl -X POST https://db-delay-api.keremalemdar.de/predict \
   -H "Content-Type: application/json" \
   -d '{
     "station_name": "Berlin Hbf",
