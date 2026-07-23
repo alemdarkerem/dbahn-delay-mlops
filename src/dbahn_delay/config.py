@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # Live-loop storage (predictions, observed changes, daily metrics)
     live_dir: Path = PROJECT_ROOT / "data" / "live"
 
+    # Where the live fetcher asks for predictions. Points at the API process
+    # that ALREADY holds the model in memory — the fetcher must never load a
+    # second copy of the bundle (that OOM-killed the 4GB VPS on day one).
+    predict_url: str = "http://127.0.0.1:8000/predict"
+
     # Historical dataset (Hugging Face) — data by Deutsche Bahn, CC BY 4.0
     hf_dataset_repo: str = "piebro/deutsche-bahn-data"
     hf_monthly_pattern: str = "monthly_processed_data/*.parquet"
