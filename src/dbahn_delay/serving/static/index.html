@@ -98,7 +98,7 @@ function departedTable(rows) {
 }
 
 async function loadBoard(station) {
-  const data = await (await fetch(`/board/${encodeURIComponent(station)}`)).json();
+  const data = await (await fetch(`/board/${encodeURIComponent(station)}?limit=500`)).json();
   document.getElementById("upcoming").innerHTML = upcomingTable(data.upcoming || []);
   document.getElementById("departed").innerHTML = departedTable(data.departed || []);
 }
