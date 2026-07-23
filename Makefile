@@ -1,4 +1,13 @@
-.PHONY: setup lint format typecheck test check data validate ingest
+.PHONY: setup lint format typecheck test check data validate ingest features train mlflow-ui
+
+features: ## Build the model-ready feature frame from the canonical dataset
+	uv run python -m dbahn_delay.features.build
+
+train: ## Run walk-forward CV + final model training (logs to MLflow)
+	uv run python -m dbahn_delay.models.train
+
+mlflow-ui: ## Browse experiment runs at http://localhost:5000
+	uv run mlflow ui
 
 data: ## Download the historical dataset from Hugging Face (~6.5 GB, idempotent)
 	uv run python -m dbahn_delay.data.download
