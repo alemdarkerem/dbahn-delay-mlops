@@ -26,8 +26,14 @@ htmlcov/
 mlruns/
 mlartifacts/
 
+# Exported model bundles — versioned via MLflow, not git
+/models/
+
 # Notebooks
 .ipynb_checkpoints/
+
+# Personal study notes — local only
+/notes/
 
 # OS / editor
 .DS_Store
