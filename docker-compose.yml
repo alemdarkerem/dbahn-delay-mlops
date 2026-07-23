@@ -1,0 +1,10 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/models:ro
+    environment:
+      # Point at a specific bundle version inside the mounted volume
+      DBAHN_MODEL_DIR: /models/20260723-141746
