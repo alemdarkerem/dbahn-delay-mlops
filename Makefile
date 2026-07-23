@@ -1,4 +1,4 @@
-.PHONY: setup lint format typecheck test check data validate ingest features train mlflow-ui
+.PHONY: setup lint format typecheck test check data validate ingest features train mlflow-ui serve docker-build docker-run
 
 features: ## Build the model-ready feature frame from the canonical dataset
 	uv run python -m dbahn_delay.features.build
@@ -8,6 +8,15 @@ train: ## Run walk-forward CV + final model training (logs to MLflow)
 
 mlflow-ui: ## Browse experiment runs at http://localhost:5000
 	uv run mlflow ui
+
+serve: ## Run the API locally (newest bundle in models/ unless DBAHN_MODEL_DIR set)
+	uv run uvicorn dbahn_delay.serving.app:app --reload --port 8000
+
+docker-build: ## Build the production image
+	docker build -t dbahn-delay-api .
+
+docker-run: ## Run the production image with the local models volume
+	docker compose up --build
 
 data: ## Download the historical dataset from Hugging Face (~6.5 GB, idempotent)
 	uv run python -m dbahn_delay.data.download
