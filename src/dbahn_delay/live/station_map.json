@@ -1,0 +1,422 @@
+{
+  "Aachen Hbf": {
+    "eva": "8000001",
+    "api_name": "Aachen Hbf"
+  },
+  "Aschaffenburg Hbf": {
+    "eva": "8000010",
+    "api_name": "Aschaffenburg Hbf"
+  },
+  "Augsburg Hbf": {
+    "eva": "8000013",
+    "api_name": "Augsburg Hbf"
+  },
+  "Bad Oldesloe": {
+    "eva": "8000023",
+    "api_name": "Bad Oldesloe"
+  },
+  "Bamberg": {
+    "eva": "8000025",
+    "api_name": "Bamberg"
+  },
+  "Berlin Friedrichstraße": {
+    "eva": "8011306",
+    "api_name": "Berlin Friedrichstraße"
+  },
+  "Berlin Gesundbrunnen": {
+    "eva": "8011102",
+    "api_name": "Berlin Gesundbrunnen"
+  },
+  "Berlin Hauptbahnhof": {
+    "eva": "8098160",
+    "api_name": "Berlin Hbf"
+  },
+  "Berlin Ostbahnhof": {
+    "eva": "8010255",
+    "api_name": "Berlin Ostbahnhof"
+  },
+  "Berlin Potsdamer Platz": {
+    "eva": "8011118",
+    "api_name": "Berlin Potsdamer Platz"
+  },
+  "Berlin Südkreuz": {
+    "eva": "8011113",
+    "api_name": "Berlin Südkreuz"
+  },
+  "Berlin Zoologischer Garten": {
+    "eva": "8010406",
+    "api_name": "Berlin Zoologischer Garten"
+  },
+  "Berlin-Lichtenberg": {
+    "eva": "8010036",
+    "api_name": "Berlin-Lichtenberg"
+  },
+  "Berlin-Spandau": {
+    "eva": "8010404",
+    "api_name": "Berlin-Spandau"
+  },
+  "Berlin-Wannsee": {
+    "eva": "8010405",
+    "api_name": "Berlin-Wannsee"
+  },
+  "Bielefeld Hbf": {
+    "eva": "8000036",
+    "api_name": "Bielefeld Hbf"
+  },
+  "Bietigheim-Bissingen": {
+    "eva": "8000038",
+    "api_name": "Bietigheim-Bissingen"
+  },
+  "Bochum Hbf": {
+    "eva": "8000041",
+    "api_name": "Bochum Hbf"
+  },
+  "Bonn Hbf": {
+    "eva": "8000044",
+    "api_name": "Bonn Hbf"
+  },
+  "Braunschweig Hbf": {
+    "eva": "8000049",
+    "api_name": "Braunschweig Hbf"
+  },
+  "Bremen Hbf": {
+    "eva": "8000050",
+    "api_name": "Bremen Hbf"
+  },
+  "Bruchsal": {
+    "eva": "8000055",
+    "api_name": "Bruchsal"
+  },
+  "Chemnitz Hbf": {
+    "eva": "8010184",
+    "api_name": "Chemnitz Hbf"
+  },
+  "Cottbus Hbf": {
+    "eva": "8010073",
+    "api_name": "Cottbus Hbf"
+  },
+  "Darmstadt Hbf": {
+    "eva": "8000068",
+    "api_name": "Darmstadt Hbf"
+  },
+  "Dortmund Hbf": {
+    "eva": "8000080",
+    "api_name": "Dortmund Hbf"
+  },
+  "Dresden Hbf": {
+    "eva": "8010085",
+    "api_name": "Dresden Hbf"
+  },
+  "Dresden-Neustadt": {
+    "eva": "8010089",
+    "api_name": "Dresden-Neustadt"
+  },
+  "Duisburg Hbf": {
+    "eva": "8000086",
+    "api_name": "Duisburg Hbf"
+  },
+  "Düsseldorf Hbf": {
+    "eva": "8000085",
+    "api_name": "Düsseldorf Hbf"
+  },
+  "Erfurt Hbf": {
+    "eva": "8010101",
+    "api_name": "Erfurt Hbf"
+  },
+  "Essen Hbf": {
+    "eva": "8000098",
+    "api_name": "Essen Hbf"
+  },
+  "Flughafen BER": {
+    "eva": "8011201",
+    "api_name": "Flughafen BER"
+  },
+  "Frankfurt (Main) Hbf": {
+    "eva": "8000105",
+    "api_name": "Frankfurt(Main)Hbf"
+  },
+  "Frankfurt (Main) Süd": {
+    "eva": "8002041",
+    "api_name": "Frankfurt(Main)Süd"
+  },
+  "Frankfurt (Oder)": {
+    "eva": "8010113",
+    "api_name": "Frankfurt(Oder)"
+  },
+  "Freiburg (Breisgau) Hbf": {
+    "eva": "8000107",
+    "api_name": "Freiburg(Breisgau) Hbf"
+  },
+  "Fulda": {
+    "eva": "8000115",
+    "api_name": "Fulda"
+  },
+  "Fürth (Bay) Hbf": {
+    "eva": "8000114",
+    "api_name": "Fürth(Bay)Hbf"
+  },
+  "Gelsenkirchen Hbf": {
+    "eva": "8000118",
+    "api_name": "Gelsenkirchen Hbf"
+  },
+  "Gießen": {
+    "eva": "8000124",
+    "api_name": "Gießen"
+  },
+  "Göttingen": {
+    "eva": "8000128",
+    "api_name": "Göttingen"
+  },
+  "Hagen Hbf": {
+    "eva": "8000142",
+    "api_name": "Hagen Hbf"
+  },
+  "Halle (Saale) Hbf": {
+    "eva": "8010159",
+    "api_name": "Halle(Saale)Hbf"
+  },
+  "Hamburg Dammtor": {
+    "eva": "8002548",
+    "api_name": "Hamburg Dammtor"
+  },
+  "Hamburg Hbf": {
+    "eva": "8002549",
+    "api_name": "Hamburg Hbf"
+  },
+  "Hamburg-Altona": {
+    "eva": "8002553",
+    "api_name": "Hamburg-Altona"
+  },
+  "Hamburg-Harburg": {
+    "eva": "8000147",
+    "api_name": "Hamburg-Harburg"
+  },
+  "Hamm (Westf) Hbf": {
+    "eva": "8000149",
+    "api_name": "Hamm(Westf)Hbf"
+  },
+  "Hanau Hbf": {
+    "eva": "8000150",
+    "api_name": "Hanau Hbf"
+  },
+  "Hannover Hbf": {
+    "eva": "8000152",
+    "api_name": "Hannover Hbf"
+  },
+  "Heidelberg Hbf": {
+    "eva": "8000156",
+    "api_name": "Heidelberg Hbf"
+  },
+  "Herford": {
+    "eva": "8000162",
+    "api_name": "Herford"
+  },
+  "Hildesheim Hbf": {
+    "eva": "8000169",
+    "api_name": "Hildesheim Hbf"
+  },
+  "Ingolstadt Hbf": {
+    "eva": "8000183",
+    "api_name": "Ingolstadt Hbf"
+  },
+  "Kaiserslautern Hbf": {
+    "eva": "8000189",
+    "api_name": "Kaiserslautern Hbf"
+  },
+  "Karlsruhe Hbf": {
+    "eva": "8000191",
+    "api_name": "Karlsruhe Hbf"
+  },
+  "Kassel Hbf": {
+    "eva": "8000193",
+    "api_name": "Kassel Hbf"
+  },
+  "Kassel-Wilhelmshöhe": {
+    "eva": "8003200",
+    "api_name": "Kassel-Wilhelmshöhe"
+  },
+  "Kiel Hbf": {
+    "eva": "8000199",
+    "api_name": "Kiel Hbf"
+  },
+  "Koblenz Hbf": {
+    "eva": "8000206",
+    "api_name": "Koblenz Hbf"
+  },
+  "Köln Hbf": {
+    "eva": "8000207",
+    "api_name": "Köln Hbf"
+  },
+  "Köln Messe/Deutz": {
+    "eva": "8003368",
+    "api_name": "Köln Messe/Deutz"
+  },
+  "Landshut (Bay) Hbf": {
+    "eva": "8000217",
+    "api_name": "Landshut(Bay)Hbf"
+  },
+  "Leipzig Hbf": {
+    "eva": "8010205",
+    "api_name": "Leipzig Hbf"
+  },
+  "Ludwigshafen (Rhein) Hbf": {
+    "eva": "8000236",
+    "api_name": "Ludwigshafen(Rh)Hbf"
+  },
+  "Lübeck Hbf": {
+    "eva": "8000237",
+    "api_name": "Lübeck Hbf"
+  },
+  "Lüneburg": {
+    "eva": "8000238",
+    "api_name": "Lüneburg"
+  },
+  "Magdeburg Hbf": {
+    "eva": "8010224",
+    "api_name": "Magdeburg Hbf"
+  },
+  "Mainz Hbf": {
+    "eva": "8000240",
+    "api_name": "Mainz Hbf"
+  },
+  "Mannheim Hbf": {
+    "eva": "8000244",
+    "api_name": "Mannheim Hbf"
+  },
+  "Mönchengladbach Hbf": {
+    "eva": "8000253",
+    "api_name": "Mönchengladbach Hbf"
+  },
+  "München Hbf": {
+    "eva": "8000261",
+    "api_name": "München Hbf"
+  },
+  "München Ost": {
+    "eva": "8000262",
+    "api_name": "München Ost"
+  },
+  "München-Pasing": {
+    "eva": "8004158",
+    "api_name": "München-Pasing"
+  },
+  "Münster (Westf) Hbf": {
+    "eva": "8000263",
+    "api_name": "Münster(Westf)Hbf"
+  },
+  "Neumünster": {
+    "eva": "8000271",
+    "api_name": "Neumünster"
+  },
+  "Neuss Hbf": {
+    "eva": "8000274",
+    "api_name": "Neuss Hbf"
+  },
+  "Neustadt (Weinstr) Hbf": {
+    "eva": "8000275",
+    "api_name": "Neustadt(Weinstr)Hbf"
+  },
+  "Nürnberg Hbf": {
+    "eva": "8000284",
+    "api_name": "Nürnberg Hbf"
+  },
+  "Oberhausen Hbf": {
+    "eva": "8000286",
+    "api_name": "Oberhausen Hbf"
+  },
+  "Offenburg": {
+    "eva": "8000290",
+    "api_name": "Offenburg"
+  },
+  "Oldenburg (Oldb) Hbf": {
+    "eva": "8000291",
+    "api_name": "Oldenburg(Oldb)Hbf"
+  },
+  "Osnabrück Hbf": {
+    "eva": "8000294",
+    "api_name": "Osnabrück Hbf"
+  },
+  "Paderborn Hbf": {
+    "eva": "8000297",
+    "api_name": "Paderborn Hbf"
+  },
+  "Pforzheim Hbf": {
+    "eva": "8000299",
+    "api_name": "Pforzheim Hbf"
+  },
+  "Plochingen": {
+    "eva": "8000302",
+    "api_name": "Plochingen"
+  },
+  "Potsdam Hbf": {
+    "eva": "8012666",
+    "api_name": "Potsdam Hbf"
+  },
+  "Regensburg Hbf": {
+    "eva": "8000309",
+    "api_name": "Regensburg Hbf"
+  },
+  "Rheine": {
+    "eva": "8000316",
+    "api_name": "Rheine"
+  },
+  "Rosenheim": {
+    "eva": "8000320",
+    "api_name": "Rosenheim"
+  },
+  "Rostock Hbf": {
+    "eva": "8010304",
+    "api_name": "Rostock Hbf"
+  },
+  "Saarbrücken Hbf": {
+    "eva": "8000323",
+    "api_name": "Saarbrücken Hbf"
+  },
+  "Singen (Hohentwiel)": {
+    "eva": "8000073",
+    "api_name": "Singen(Hohentwiel)"
+  },
+  "Solingen Hbf": {
+    "eva": "8000087",
+    "api_name": "Solingen Hbf"
+  },
+  "Stuttgart Hbf": {
+    "eva": "8000096",
+    "api_name": "Stuttgart Hbf"
+  },
+  "Trier Hbf": {
+    "eva": "8000134",
+    "api_name": "Trier Hbf"
+  },
+  "Tübingen Hbf": {
+    "eva": "8000141",
+    "api_name": "Tübingen Hbf"
+  },
+  "Uelzen": {
+    "eva": "8000168",
+    "api_name": "Uelzen"
+  },
+  "Ulm Hbf": {
+    "eva": "8000170",
+    "api_name": "Ulm Hbf"
+  },
+  "Wiesbaden Hbf": {
+    "eva": "8000250",
+    "api_name": "Wiesbaden Hbf"
+  },
+  "Wolfsburg Hbf": {
+    "eva": "8006552",
+    "api_name": "Wolfsburg Hbf"
+  },
+  "Worms Hbf": {
+    "eva": "8000257",
+    "api_name": "Worms Hbf"
+  },
+  "Wuppertal Hbf": {
+    "eva": "8000266",
+    "api_name": "Wuppertal Hbf"
+  },
+  "Würzburg Hbf": {
+    "eva": "8000260",
+    "api_name": "Würzburg Hbf"
+  }
+}

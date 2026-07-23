@@ -154,3 +154,17 @@ def model_info() -> dict[str, object]:
         "metadata": bundle.metadata,
         "snapshot_entities": {k: len(v) for k, v in bundle.stats.items()},
     }
+
+
+@app.get("/monitoring")
+def monitoring() -> dict[str, object]:
+    """Last 30 daily accountability reports (prediction vs actual)."""
+    from dbahn_delay.config import settings
+
+    metrics_path = settings.live_dir / "daily_metrics.parquet"
+    if not metrics_path.exists():
+        return {"days": [], "note": "no daily metrics recorded yet"}
+    import polars as pl
+
+    rows = pl.read_parquet(metrics_path).sort("day").tail(30)
+    return {"days": rows.to_dicts()}

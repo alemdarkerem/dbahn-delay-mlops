@@ -56,7 +56,7 @@ Key principles:
 | 1 | Data foundation: ingest + validation, EDA, data quality findings | ✅ |
 | 2 | Baseline + first model: features, time-aware CV, MLflow, calibration | ✅ |
 | 3 | Serving: FastAPI, Docker, deploy | ✅ |
-| 4 | Live loop: DB API fetcher, ground truth, monitoring | 🔜 |
+| 4 | Live loop: DB API fetcher, ground truth, monitoring | ✅ |
 | 5 | Automated retraining, champion/challenger, README polish | 🔜 |
 | 6 | Thin demo frontend | 🔜 |
 
@@ -148,6 +148,29 @@ the full training metadata. Rolling-history features come from a small **feature
 snapshot** exported with the bundle (the serving feature store — same asof semantics as
 training, so no train/serve skew). Golden-prediction tests pin exact API outputs against
 a committed fixture bundle, so silent feature drift fails CI loudly.
+
+## Live loop & monitoring
+
+Every hour (Coolify scheduled task on the VPS) the system:
+
+1. **Fetches** upcoming planned stops for all 105 panel stations from the DB Timetables
+   API (rate-limit-paced, station failures degrade gracefully).
+2. **Predicts & seals**: each stop gets a prediction from the deployed bundle, logged
+   with a timestamp *before the event*. First prediction wins — re-predicting closer
+   to departure would flatter the accuracy reports (hindsight leakage).
+3. **Collects ground truth**: observed delay/cancellation changes are recorded on every
+   cycle (the API only retains the current day — wait and the truth evaporates).
+
+Every morning the previous day is scored: predictions vs actuals → AUC, Brier, MAE,
+p90 coverage, base-rate and coverage-mix drift counters → appended to a daily metrics
+series and a human-readable report. `GET /monitoring` exposes the last 30 days:
+
+```bash
+curl https://db-delay-api.keremalemdar.de/monitoring
+```
+
+Documented assumption: a stop never seen in the change feed counts as on time (same
+convention as the dataset's collector). Canceled stops are excluded from delay metrics.
 
 ## Data & licensing
 

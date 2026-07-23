@@ -463,6 +463,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "holidays" },
+    { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "lightgbm" },
     { name = "matplotlib" },
@@ -475,7 +476,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "jupyterlab" },
     { name = "mypy" },
     { name = "pre-commit" },
@@ -487,6 +487,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.139.2" },
     { name = "holidays", specifier = ">=0.101" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", specifier = ">=1.24.0" },
     { name = "lightgbm", specifier = ">=4.7.0" },
     { name = "matplotlib", specifier = ">=3.11.1" },
@@ -499,7 +500,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "jupyterlab", specifier = ">=4.6.2" },
     { name = "mypy", specifier = ">=1.14" },
     { name = "pre-commit", specifier = ">=4.0" },
