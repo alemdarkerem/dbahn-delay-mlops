@@ -17,23 +17,26 @@ from dbahn_delay.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Schema of the raw monthly files (documented on the HF dataset card).
+# Schema of the raw monthly files, verified against the actual parquet files.
+# NOTE: the HF dataset card is outdated — real files have train_number and
+# line_number (no train_name), Int32 integers and ns-resolution naive datetimes.
 EXPECTED_SCHEMA: dict[str, pl.DataType] = {
     "station_name": pl.String(),
     "xml_station_name": pl.String(),
     "eva": pl.String(),
-    "train_name": pl.String(),
+    "train_number": pl.String(),
+    "line_number": pl.String(),
     "final_destination_station": pl.String(),
-    "delay_in_min": pl.Int64(),
-    "time": pl.Datetime("us"),
+    "delay_in_min": pl.Int32(),
+    "time": pl.Datetime("ns"),
     "is_canceled": pl.Boolean(),
     "train_type": pl.String(),
     "train_line_ride_id": pl.String(),
-    "train_line_station_num": pl.Int64(),
-    "arrival_planned_time": pl.Datetime("us"),
-    "arrival_change_time": pl.Datetime("us"),
-    "departure_planned_time": pl.Datetime("us"),
-    "departure_change_time": pl.Datetime("us"),
+    "train_line_station_num": pl.Int32(),
+    "arrival_planned_time": pl.Datetime("ns"),
+    "arrival_change_time": pl.Datetime("ns"),
+    "departure_planned_time": pl.Datetime("ns"),
+    "departure_change_time": pl.Datetime("ns"),
     "id": pl.String(),
 }
 
