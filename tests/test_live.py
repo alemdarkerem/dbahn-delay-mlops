@@ -108,6 +108,36 @@ def test_upsert_changes_keeps_latest_observation(
     assert stored["changed_time"][0] == datetime(2026, 7, 23, 18, 59, tzinfo=BERLIN)
 
 
+def test_predict_stops_uses_injected_predictor_and_skips_failures() -> None:
+    from dbahn_delay.live.fetch import predict_stops
+    from dbahn_delay.live.parse import PlannedStop
+
+    stops = [
+        PlannedStop(
+            "s1", "Berlin Hbf", "ICE", "542", datetime(2026, 7, 23, 18, 47, tzinfo=BERLIN), True
+        ),
+        PlannedStop(
+            "s2", "Berlin Hbf", "S", "7", datetime(2026, 7, 23, 18, 50, tzinfo=BERLIN), True
+        ),
+    ]
+
+    def stub_predict(stop: PlannedStop) -> dict[str, object] | None:
+        if stop.stop_id == "s2":
+            return None  # API hiccup: row skipped, cycle survives
+        return {
+            "delay_probability": 0.42,
+            "delay_p50_min": 3.0,
+            "delay_p90_min": 21.0,
+            "coverage": "train",
+            "model_version": "test",
+        }
+
+    out = predict_stops(stub_predict, stops, datetime(2026, 7, 23, 16, 0, tzinfo=BERLIN))
+    assert out.height == 1
+    assert out["stop_id"][0] == "s1"
+    assert out["delay_probability"][0] == 0.42
+
+
 def test_evaluate_day_metrics_hand_checked() -> None:
     predictions = prediction_frame(["on-time", "delayed", "canceled"])
     changes = pl.DataFrame(

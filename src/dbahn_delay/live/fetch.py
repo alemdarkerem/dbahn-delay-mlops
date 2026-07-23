@@ -5,28 +5,34 @@ prediction wins — re-predicting closer to departure would leak an unfair
 advantage into the accuracy reports). Observed changes (delays/cancellations)
 are upserted so the daily evaluator can join them as ground truth.
 
+MEMORY RULE (learned the hard way, day-one OOM incident): this process must
+NEVER load the model bundle. Predictions are requested from the local API
+process (settings.predict_url), which already holds the single in-memory
+copy. The fetcher itself stays ~100MB.
+
 Runs hourly via cron/Coolify Scheduled Tasks: ``python -m dbahn_delay.live.fetch``
 """
 
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import httpx
 import polars as pl
 
 from dbahn_delay.config import settings
 from dbahn_delay.live.client import TimetablesClient
 from dbahn_delay.live.parse import Change, PlannedStop, parse_changes, parse_plan
 from dbahn_delay.live.stations import load_station_map
-from dbahn_delay.serving.app import feature_matrix
-from dbahn_delay.serving.features import assemble_features
-from dbahn_delay.serving.loader import ModelBundle
 
 logger = logging.getLogger(__name__)
 
 BERLIN = ZoneInfo("Europe/Berlin")
 HOURS_AHEAD = (1, 2)  # predict for stops scheduled in the next two hour-slices
+
+PredictFn = Callable[[PlannedStop], dict[str, Any] | None]
 
 
 def predictions_path(day: str) -> Any:
@@ -37,20 +43,38 @@ def changes_path(day: str) -> Any:
     return settings.live_dir / "changes" / f"{day}.parquet"
 
 
+def api_predictor(http: httpx.Client) -> PredictFn:
+    """Ask the already-running API process for a prediction (one bundle copy)."""
+
+    def predict(stop: PlannedStop) -> dict[str, Any] | None:
+        try:
+            response = http.post(
+                settings.predict_url,
+                json={
+                    "station_name": stop.station_name,
+                    "train_type": stop.train_type,
+                    "train_number": stop.train_number,
+                    "scheduled_time": stop.scheduled_time.isoformat(),
+                },
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            return response.json()  # type: ignore[no-any-return]
+        except httpx.HTTPError:
+            logger.exception("prediction failed for stop %s", stop.stop_id)
+            return None
+
+    return predict
+
+
 def predict_stops(
-    bundle: ModelBundle, stops: list[PlannedStop], predicted_at: datetime
+    predict: PredictFn, stops: list[PlannedStop], predicted_at: datetime
 ) -> pl.DataFrame:
     rows = []
     for stop in stops:
-        features, coverage = assemble_features(
-            bundle,
-            station_name=stop.station_name,
-            train_type=stop.train_type,
-            train_number=stop.train_number,
-            scheduled_time=stop.scheduled_time,
-            train_line_station_num=None,
-        )
-        x = feature_matrix(bundle, features)
+        result = predict(stop)
+        if result is None:
+            continue
         rows.append(
             {
                 "stop_id": stop.stop_id,
@@ -58,16 +82,15 @@ def predict_stops(
                 "train_type": stop.train_type,
                 "train_number": stop.train_number,
                 "scheduled_time": stop.scheduled_time,
-                "delay_probability": float(bundle.clf.predict(x)[0]),
-                "delay_p50_min": max(0.0, float(bundle.q50.predict(x)[0])),
-                "delay_p90_min": max(0.0, float(bundle.q90.predict(x)[0])),
-                "coverage": coverage,
-                "model_version": bundle.version,
+                "delay_probability": result["delay_probability"],
+                "delay_p50_min": result["delay_p50_min"],
+                "delay_p90_min": result["delay_p90_min"],
+                "coverage": result["coverage"],
+                "model_version": result["model_version"],
                 "predicted_at": predicted_at,
             }
         )
-    df = pl.DataFrame(rows)
-    return df.with_columns(delay_p90_min=pl.max_horizontal("delay_p90_min", "delay_p50_min"))
+    return pl.DataFrame(rows)
 
 
 def append_new_predictions(new: pl.DataFrame, day: str) -> int:
@@ -109,11 +132,12 @@ def upsert_changes(changes: list[Change], observed_at: datetime, day: str) -> in
     return new.height
 
 
-def run_cycle(now: datetime | None = None) -> dict[str, int]:
+def run_cycle(now: datetime | None = None, predict: PredictFn | None = None) -> dict[str, int]:
     now = now or datetime.now(tz=BERLIN)
-    bundle = ModelBundle.load(settings_model_dir())
     stations = load_station_map()
     client = TimetablesClient()
+    http = httpx.Client() if predict is None else None
+    predict = predict or api_predictor(http)  # type: ignore[arg-type]
 
     all_stops: list[PlannedStop] = []
     all_changes: list[Change] = []
@@ -147,12 +171,17 @@ def run_cycle(now: datetime | None = None) -> dict[str, int]:
     finally:
         client.close()
 
-    day = now.strftime("%Y-%m-%d")
-    n_predictions = 0
-    if all_stops:
-        predictions = predict_stops(bundle, all_stops, predicted_at=now)
-        n_predictions = append_new_predictions(predictions, day)
-    n_changes = upsert_changes(all_changes, observed_at=now, day=day)
+    try:
+        day = now.strftime("%Y-%m-%d")
+        n_predictions = 0
+        if all_stops:
+            predictions = predict_stops(predict, all_stops, predicted_at=now)
+            if not predictions.is_empty():
+                n_predictions = append_new_predictions(predictions, day)
+        n_changes = upsert_changes(all_changes, observed_at=now, day=day)
+    finally:
+        if http is not None:
+            http.close()
 
     summary = {
         "stations_ok": ok,
@@ -163,19 +192,6 @@ def run_cycle(now: datetime | None = None) -> dict[str, int]:
     }
     logger.info("cycle done: %s", summary)
     return summary
-
-
-def settings_model_dir() -> Any:
-    import os
-    from pathlib import Path
-
-    bundle_dir = os.environ.get("DBAHN_MODEL_DIR", "")
-    if bundle_dir:
-        return Path(bundle_dir)
-    candidates = sorted(Path("models").glob("*/metadata.json"))
-    if not candidates:
-        raise RuntimeError("no model bundle found - set DBAHN_MODEL_DIR")
-    return candidates[-1].parent
 
 
 if __name__ == "__main__":
