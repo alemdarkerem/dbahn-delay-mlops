@@ -6,6 +6,7 @@ variables or a local .env file (e.g. ``DBAHN_DATA_DIR=/mnt/data``).
 
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -17,6 +18,15 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DBAHN_", env_file=".env", extra="ignore")
 
     data_dir: Path = PROJECT_ROOT / "data"
+
+    # DB API Marketplace (Timetables) — credentials come from .env / environment
+    # (aliased: the env var names have no DBAHN_ prefix, see .env.example)
+    db_api_client_id: str = Field(default="", validation_alias="DB_API_CLIENT_ID")
+    db_api_client_secret: str = Field(default="", validation_alias="DB_API_CLIENT_SECRET")
+    db_api_base_url: str = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
+
+    # Live-loop storage (predictions, observed changes, daily metrics)
+    live_dir: Path = PROJECT_ROOT / "data" / "live"
 
     # Historical dataset (Hugging Face) — data by Deutsche Bahn, CC BY 4.0
     hf_dataset_repo: str = "piebro/deutsche-bahn-data"

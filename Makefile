@@ -18,6 +18,12 @@ docker-build: ## Build the production image
 docker-run: ## Run the production image with the local models volume
 	docker compose up --build
 
+live-fetch: ## One live cycle: fetch upcoming stops, log predictions + changes
+	uv run python -m dbahn_delay.live.fetch
+
+live-eval: ## Evaluate yesterday's predictions against observed outcomes
+	uv run python -m dbahn_delay.live.evaluate_day
+
 data: ## Download the historical dataset from Hugging Face (~6.5 GB, idempotent)
 	uv run python -m dbahn_delay.data.download
 
