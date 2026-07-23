@@ -1,0 +1,52 @@
+[
+  {
+    "name": "ice_rush_hour_known_train",
+    "request": {
+      "station_name": "Berlin Hbf",
+      "train_type": "ICE",
+      "train_number": "1601",
+      "scheduled_time": "2026-07-02T17:30:00",
+      "train_line_station_num": 3
+    },
+    "expected": {
+      "delay_probability": 0.5355,
+      "delay_p50_min": 7.3,
+      "delay_p90_min": 24.4,
+      "coverage": "train",
+      "model_version": "fixture-0"
+    }
+  },
+  {
+    "name": "sbahn_morning",
+    "request": {
+      "station_name": "M\u00fcnchen Hbf",
+      "train_type": "S",
+      "train_number": "7",
+      "scheduled_time": "2026-07-03T08:00:00"
+    },
+    "expected": {
+      "delay_probability": 0.2156,
+      "delay_p50_min": 1.7,
+      "delay_p90_min": 19.5,
+      "coverage": "train",
+      "model_version": "fixture-0"
+    }
+  },
+  {
+    "name": "unknown_station_fallback",
+    "request": {
+      "station_name": "Nirgendwo Hbf",
+      "train_type": "RE",
+      "train_number": "5",
+      "scheduled_time": "2026-07-04T12:15:00",
+      "train_line_station_num": 10
+    },
+    "expected": {
+      "delay_probability": 0.253,
+      "delay_p50_min": 1.4,
+      "delay_p90_min": 21.0,
+      "coverage": "train",
+      "model_version": "fixture-0"
+    }
+  }
+]
