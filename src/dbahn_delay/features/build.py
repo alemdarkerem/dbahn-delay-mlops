@@ -43,7 +43,7 @@ def add_scheduled_time(lf: pl.LazyFrame) -> pl.LazyFrame:
         scheduled_time=pl.coalesce(
             pl.col("departure_planned_time"),
             pl.col("arrival_planned_time"),
-            pl.col("time").dt.offset_by(pl.format("-{}m", pl.col("delay_in_min"))),
+            pl.col("time") - pl.duration(minutes=pl.col("delay_in_min")),
         )
     )
 
