@@ -107,6 +107,46 @@ From full-dataset EDA over 148.4M rows ([notebook](notebooks/01_eda.ipynb)):
    card's schema is outdated (files carry `train_number`/`line_number`, not
    `train_name`) — the files are the truth, not the docs.
 
+## API
+
+The trained bundle is served by a FastAPI app (interactive docs at `/docs`).
+
+```bash
+make serve   # local; or: docker compose up --build
+```
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "station_name": "Berlin Hbf",
+    "train_type": "ICE",
+    "train_number": "1601",
+    "scheduled_time": "2026-07-24T17:30:00"
+  }'
+```
+
+```json
+{
+  "delay_probability": 0.5638,
+  "delay_p50_min": 8.1,
+  "delay_p90_min": 35.0,
+  "coverage": "train",
+  "model_version": "20260723-141746"
+}
+```
+
+Response semantics: `delay_probability` = P(delay ≥ 6 min); `delay_p50_min`/`delay_p90_min`
+= "half of the time at most X" / "9 times out of 10 at most Y"; `coverage` reports how
+specific the features were — `train` (this train's own history) → `station_type` →
+`type` → `cold` (graceful cold-start fallback instead of failing on unknown inputs).
+
+`GET /health` reports model version and feature-snapshot age; `GET /model-info` returns
+the full training metadata. Rolling-history features come from a small **feature
+snapshot** exported with the bundle (the serving feature store — same asof semantics as
+training, so no train/serve skew). Golden-prediction tests pin exact API outputs against
+a committed fixture bundle, so silent feature drift fails CI loudly.
+
 ## Data & licensing
 
 - **Historical data:** [`piebro/deutsche-bahn-data`](https://huggingface.co/datasets/piebro/deutsche-bahn-data)
