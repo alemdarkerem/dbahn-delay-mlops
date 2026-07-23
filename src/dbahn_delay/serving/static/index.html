@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DB Delay Predictions</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #101418;
+         color: #e6e8ea; padding: 1.2rem; max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 1.25rem; margin-bottom: .2rem; }
+  .sub { color: #8a949e; font-size: .85rem; margin-bottom: 1rem; }
+  select { background: #1a2027; color: #e6e8ea; border: 1px solid #2c343d;
+           padding: .5rem .8rem; border-radius: 8px; font-size: 1rem; width: 100%;
+           max-width: 420px; margin-bottom: 1.2rem; }
+  h2 { font-size: .95rem; color: #aab4be; margin: 1.1rem 0 .5rem;
+       text-transform: uppercase; letter-spacing: .05em; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th { text-align: left; color: #7d8791; font-weight: 600; padding: .4rem .5rem;
+       border-bottom: 1px solid #2c343d; font-size: .78rem; }
+  td { padding: .45rem .5rem; border-bottom: 1px solid #1c232b; white-space: nowrap; }
+  .train { font-weight: 600; }
+  .risk { font-weight: 600; }
+  .low  { color: #4ade80; } .mid { color: #facc15; } .high { color: #f87171; }
+  .muted { color: #6b7480; }
+  .ontime { color: #4ade80; } .late { color: #f87171; } .canceled { color: #a78bfa; }
+  .hit { color: #4ade80; } .miss { color: #f87171; }
+  .note { color: #8a949e; padding: 1rem 0; }
+  footer { margin-top: 2rem; color: #5b646e; font-size: .75rem; line-height: 1.5; }
+  footer a { color: #7d8791; }
+</style>
+</head>
+<body>
+  <h1>🚆 DB Delay Predictions</h1>
+  <div class="sub">Sealed model predictions vs. reality — refreshed hourly.
+    Model: <span id="version" class="muted">…</span></div>
+
+  <select id="station" aria-label="Station"></select>
+
+  <h2>Upcoming departures — model forecast</h2>
+  <div id="upcoming"></div>
+
+  <h2>Already departed — forecast vs. what happened</h2>
+  <div id="departed"></div>
+
+  <footer>
+    Predictions are sealed before each train runs (first prediction wins — no hindsight edits).
+    p50/p90: "half the time at most X min" / "9 times out of 10 at most Y min".
+    Data by Deutsche Bahn (CC BY 4.0) via DB API Marketplace ·
+    <a href="/docs">API docs</a> · <a href="/monitoring">daily accuracy series</a>
+  </footer>
+
+<script>
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString("de-DE",
+  { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+const riskClass = (p) => p >= 0.4 ? "high" : p >= 0.2 ? "mid" : "low";
+
+function upcomingTable(rows) {
+  if (!rows.length) return '<div class="note">No upcoming predictions for this station right now (next fetch cycle runs at :05 past the hour).</div>';
+  const tr = rows.map(r => `
+    <tr>
+      <td>${fmtTime(r.scheduled_time)}</td>
+      <td class="train">${r.train_type} ${r.train_number}</td>
+      <td class="risk ${riskClass(r.delay_probability)}">${Math.round(r.delay_probability * 100)}%</td>
+      <td>${r.delay_p50_min.toFixed(0)} min</td>
+      <td>${r.delay_p90_min.toFixed(0)} min</td>
+      <td class="muted">${r.coverage}</td>
+    </tr>`).join("");
+  return `<table><thead><tr>
+    <th>Time</th><th>Train</th><th>Delay risk (≥6 min)</th><th>Typical (p50)</th>
+    <th>Bad day (p90)</th><th>Coverage</th></tr></thead><tbody>${tr}</tbody></table>`;
+}
+
+function departedTable(rows) {
+  if (!rows.length) return '<div class="note">Nothing departed yet today.</div>';
+  const tr = rows.map(r => {
+    const actual = r.is_canceled
+      ? '<span class="canceled">canceled</span>'
+      : (r.actual_delay_min >= 6
+          ? `<span class="late">+${r.actual_delay_min} min</span>`
+          : `<span class="ontime">+${r.actual_delay_min} min</span>`);
+    const withinP90 = r.is_canceled ? "—"
+      : (r.actual_delay_min <= r.delay_p90_min
+          ? '<span class="hit">✓</span>' : '<span class="miss">✗</span>');
+    return `<tr>
+      <td>${fmtTime(r.scheduled_time)}</td>
+      <td class="train">${r.train_type} ${r.train_number}</td>
+      <td class="risk ${riskClass(r.delay_probability)}">${Math.round(r.delay_probability * 100)}%</td>
+      <td>${r.delay_p50_min.toFixed(0)}–${r.delay_p90_min.toFixed(0)} min</td>
+      <td>${actual}</td>
+      <td>${withinP90}</td>
+    </tr>`;
+  }).join("");
+  return `<table><thead><tr>
+    <th>Time</th><th>Train</th><th>Predicted risk</th><th>Predicted p50–p90</th>
+    <th>Actual delay</th><th>Within p90?</th></tr></thead><tbody>${tr}</tbody></table>`;
+}
+
+async function loadBoard(station) {
+  const data = await (await fetch(`/board/${encodeURIComponent(station)}`)).json();
+  document.getElementById("upcoming").innerHTML = upcomingTable(data.upcoming || []);
+  document.getElementById("departed").innerHTML = departedTable(data.departed || []);
+}
+
+async function init() {
+  const info = await (await fetch("/health")).json();
+  document.getElementById("version").textContent = info.model_version;
+  const { stations } = await (await fetch("/stations")).json();
+  const select = document.getElementById("station");
+  select.innerHTML = stations.map(s => `<option>${s}</option>`).join("");
+  const preferred = "Berlin Hauptbahnhof";
+  if (stations.includes(preferred)) select.value = preferred;
+  select.addEventListener("change", () => loadBoard(select.value));
+  await loadBoard(select.value);
+  setInterval(() => loadBoard(select.value), 120_000);
+}
+init();
+</script>
+</body>
+</html>

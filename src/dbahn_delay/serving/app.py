@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from dbahn_delay.serving.features import assemble_features
@@ -168,3 +169,84 @@ def monitoring() -> dict[str, object]:
 
     rows = pl.read_parquet(metrics_path).sort("day").tail(30)
     return {"days": rows.to_dicts()}
+
+
+@app.get("/stations")
+def stations() -> dict[str, object]:
+    """Panel stations available on the board."""
+    from dbahn_delay.live.stations import load_station_map
+
+    return {"stations": sorted(load_station_map())}
+
+
+@app.get("/board/{station_name}")
+def board(station_name: str, limit: int = 25) -> dict[str, object]:
+    """Station board: upcoming predictions + departed trains with outcomes.
+
+    Reads today's sealed-prediction and observed-change files. Departed rows
+    include the observed delay (no change record => assumed on time), which
+    makes the model's accuracy publicly visible per train.
+    """
+    import polars as pl
+
+    from dbahn_delay.config import settings
+
+    now = datetime.now(tz=BERLIN)
+    day = now.strftime("%Y-%m-%d")
+    pred_path = settings.live_dir / "predictions" / f"{day}.parquet"
+    if not pred_path.exists():
+        return {"station": station_name, "upcoming": [], "departed": [], "note": "no data yet"}
+
+    preds = pl.read_parquet(pred_path).filter(pl.col("station_name") == station_name)
+    changes_path = settings.live_dir / "changes" / f"{day}.parquet"
+    if changes_path.exists():
+        changes = pl.read_parquet(changes_path)
+        preds = preds.join(
+            changes.select("stop_id", "changed_time", "is_canceled"), on="stop_id", how="left"
+        )
+    else:
+        preds = preds.with_columns(
+            changed_time=pl.lit(None, dtype=pl.Datetime("us", "Europe/Berlin")),
+            is_canceled=pl.lit(None, dtype=pl.Boolean),
+        )
+
+    preds = preds.with_columns(
+        is_canceled=pl.col("is_canceled").fill_null(False),
+        actual_delay_min=(pl.col("changed_time") - pl.col("scheduled_time"))
+        .dt.total_minutes()
+        .fill_null(0),
+    )
+    columns = [
+        "train_type",
+        "train_number",
+        "scheduled_time",
+        "delay_probability",
+        "delay_p50_min",
+        "delay_p90_min",
+        "coverage",
+        "is_canceled",
+        "actual_delay_min",
+    ]
+    upcoming = (
+        preds.filter(pl.col("scheduled_time") >= now)
+        .sort("scheduled_time")
+        .head(limit)
+        .select(columns)
+    )
+    departed = (
+        preds.filter(pl.col("scheduled_time") < now)
+        .sort("scheduled_time", descending=True)
+        .head(limit)
+        .select(columns)
+    )
+    return {
+        "station": station_name,
+        "generated_at": now.isoformat(),
+        "upcoming": upcoming.to_dicts(),
+        "departed": departed.to_dicts(),
+    }
+
+
+@app.get("/", include_in_schema=False)
+def index() -> "FileResponse":
+    return FileResponse(Path(__file__).parent / "static" / "index.html")
