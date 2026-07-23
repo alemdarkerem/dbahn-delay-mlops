@@ -19,7 +19,8 @@ htmlcov/
 .env
 
 # Data — raw/processed data stays out of git (HF dataset is CC BY 4.0, re-downloadable)
-data/
+# Root-anchored so it does not swallow src/dbahn_delay/data
+/data/
 
 # Experiment tracking artifacts
 mlruns/

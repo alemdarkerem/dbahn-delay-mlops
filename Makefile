@@ -1,4 +1,13 @@
-.PHONY: setup lint format typecheck test check
+.PHONY: setup lint format typecheck test check data validate ingest
+
+data: ## Download the historical dataset from Hugging Face (~6.5 GB, idempotent)
+	uv run python -m dbahn_delay.data.download
+
+validate: ## Validate all raw monthly files (tolerant raw profile)
+	uv run python -m dbahn_delay.data.validate
+
+ingest: ## Build the canonical stops dataset from raw files
+	uv run python -m dbahn_delay.data.ingest
 
 setup: ## Install dependencies and git hooks
 	uv sync

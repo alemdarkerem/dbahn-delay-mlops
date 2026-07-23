@@ -53,7 +53,7 @@ Key principles:
 | Phase | Scope | Status |
 |-------|-------|--------|
 | 0 | Skeleton: uv, ruff, mypy, pytest, pre-commit, CI | ✅ |
-| 1 | Data foundation: ingest + validation, EDA, data quality findings | ⏳ |
+| 1 | Data foundation: ingest + validation, EDA, data quality findings | ✅ |
 | 2 | Baseline + first model: features, time-aware CV, MLflow, calibration | 🔜 |
 | 3 | Serving: FastAPI, Docker, deploy | 🔜 |
 | 4 | Live loop: DB API fetcher, ground truth, monitoring | 🔜 |
@@ -68,6 +68,44 @@ cd dbahn-delay-mlops
 make setup   # uv sync + pre-commit hooks (requires uv: https://docs.astral.sh/uv/)
 make check   # lint + typecheck + tests — exactly what CI runs
 ```
+
+## Data pipeline
+
+```bash
+make data      # download 24 monthly parquet files from Hugging Face (~6.5 GB)
+make validate  # data quality checks on every raw file (tolerant raw profile)
+make ingest    # build data/processed/stops.parquet (44.7M rows, ~1.9 GB)
+```
+
+The ingest step produces one canonical dataset: timezone-aware (Europe/Berlin, explicit
+DST policy), deduplicated by stop id, restricted to a consistent 105-station panel, with
+physically impossible rows removed. The processed file must pass a **zero-tolerance**
+validation profile; raw files get small calibrated tolerances (see findings below).
+
+## Data quality findings
+
+From full-dataset EDA over 148.4M rows ([notebook](notebooks/01_eda.ipynb)):
+
+1. **Coverage regime change 2025-11.** Coverage jumps from 107 to ~5,300 stations
+   (~2M → ~15M rows/month). Training on everything would fabricate a drift signal, so
+   ingest restricts to the panel of stations present in *every* month (105 stations).
+2. **Heavy-tailed target with ±24 h sentinels.** Median delay is 1 min, p99 = 37 min,
+   extremes reach ±24 h. Values at exactly ±1440 min are day-shift artifacts
+   (~0.003% of rows) and are dropped. Real multi-hour delays are **kept** — the heavy
+   tail is signal, not noise, and is why the model predicts quantiles (p50/p90), not
+   a single average.
+3. **The classification base rate itself drifts.** P(delay ≥ 6 min) swings between 14%
+   and 22.7% per month (peak 2025-10). Random train/test splits would leak seasonal
+   regimes — validation must be time-aware, and monitoring must track the base rate.
+4. **Delay is meaningless for canceled stops.** 69% of 6.5M canceled stops report
+   delay = 0. Canceled rows stay in the dataset (flagged) but are excluded from
+   regression targets.
+5. **Nulls are structural at route endpoints.** `arrival_*`/`departure_*` are ~10.7%
+   null — a route's first stop has no arrival, its last no departure (verified per
+   ride). The genuine defect is null `station_name` (up to 2.35% in early-era months),
+   dropped at ingest. Bonus: zero duplicate ids across 148M rows, and the dataset
+   card's schema is outdated (files carry `train_number`/`line_number`, not
+   `train_name`) — the files are the truth, not the docs.
 
 ## Data & licensing
 
