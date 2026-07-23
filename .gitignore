@@ -39,3 +39,6 @@ mlartifacts/
 .DS_Store
 .idea/
 .vscode/
+
+# Temp training artifacts (uploaded to MLflow)
+/mlruns_artifacts_tmp/
