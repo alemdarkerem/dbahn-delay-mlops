@@ -194,6 +194,11 @@ def export_bundle(models: dict[str, lgb.LGBMModel], train_months: list[str]) -> 
         "lgb_params": {k: str(v) for k, v in LGB_COMMON.items()},
     }
     (bundle_dir / "metadata.json").write_text(json.dumps(meta, indent=2))
+
+    # Serving needs the latest rolling stats as lookup tables (feature snapshot).
+    from dbahn_delay.features.snapshot import export_snapshot
+
+    export_snapshot(bundle_dir)
     logger.info("Exported model bundle to %s", bundle_dir)
     return bundle_dir
 
