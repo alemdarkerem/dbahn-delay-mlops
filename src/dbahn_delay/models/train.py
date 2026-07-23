@@ -74,8 +74,10 @@ LGB_COMMON: dict[str, Any] = {
 
 
 def load_split(months: list[str]) -> pl.DataFrame:
-    lf = pl.scan_parquet(settings.processed_dir / "features.parquet").filter(
-        pl.col("fold_month").is_in(months)
+    lf = (
+        pl.scan_parquet(settings.processed_dir / "features.parquet")
+        .filter(pl.col("fold_month").is_in(months))
+        .select([*FEATURES, "target_delayed6", "target_delay_min"])
     )
     smoke_rows = int(os.environ.get("DBAHN_SMOKE_ROWS", "0"))
     if smoke_rows:
@@ -84,18 +86,25 @@ def load_split(months: list[str]) -> pl.DataFrame:
 
 
 def to_lgb_frame(df: pl.DataFrame) -> Any:
-    """polars -> pandas with proper categorical dtypes for LightGBM."""
-    pdf = df.select(FEATURES).to_pandas()
-    for c in CATEGORICAL:
-        pdf[c] = pdf[c].astype("category")
-    return pdf
+    """polars -> pandas, memory-conscious.
+
+    Strings are cast to polars Categorical first so the pandas conversion
+    yields category dtype via arrow dictionaries — never Python-object
+    columns (which explode to tens of GB at 20M+ rows). Numerics go to
+    float32. LightGBM stores the training categories in the booster and
+    re-maps prediction frames by value, so per-frame category codes are safe.
+    """
+    return (
+        df.select(FEATURES)
+        .with_columns(
+            [pl.col(c).cast(pl.Categorical) for c in CATEGORICAL]
+            + [pl.col(c).cast(pl.Float32) for c in NUMERIC]
+        )
+        .to_pandas()
+    )
 
 
-def fit_models(train: pl.DataFrame) -> dict[str, lgb.LGBMModel]:
-    x = to_lgb_frame(train)
-    y_cls = train["target_delayed6"].to_numpy()
-    y_reg = train["target_delay_min"].to_numpy()
-
+def fit_models(x: Any, y_cls: Any, y_reg: Any) -> dict[str, lgb.LGBMModel]:
     clf = lgb.LGBMClassifier(objective="binary", **LGB_COMMON)
     clf.fit(x, y_cls, categorical_feature=CATEGORICAL)
 
@@ -107,6 +116,16 @@ def fit_models(train: pl.DataFrame) -> dict[str, lgb.LGBMModel]:
     return models
 
 
+def fit_models_from_split(months: list[str]) -> dict[str, lgb.LGBMModel]:
+    """Load a train window, convert, and free the polars frame before fitting."""
+    train = load_split(months)
+    x = to_lgb_frame(train)
+    y_cls = train["target_delayed6"].to_numpy()
+    y_reg = train["target_delay_min"].to_numpy()
+    del train
+    return fit_models(x, y_cls, y_reg)
+
+
 def evaluate_fold(fold: Fold, artifacts_dir: Path) -> dict[str, float]:
     logger.info("fold %s: loading data", fold.val_month)
     train = load_split(fold.train_months)
@@ -116,7 +135,13 @@ def evaluate_fold(fold: Fold, artifacts_dir: Path) -> dict[str, float]:
     tables = fit_baseline(train.lazy())
     val_bl = predict_baseline(tables, val.lazy())
 
-    models = fit_models(train)
+    x_train = to_lgb_frame(train)
+    y_cls_train = train["target_delayed6"].to_numpy()
+    y_reg_train = train["target_delay_min"].to_numpy()
+    del train  # free the polars frame before LightGBM allocates its datasets
+
+    models = fit_models(x_train, y_cls_train, y_reg_train)
+    del x_train, y_cls_train, y_reg_train
     x_val = to_lgb_frame(val)
     prob = np.asarray(models["clf"].predict_proba(x_val))[:, 1]
     p50 = np.asarray(models["q50"].predict(x_val), dtype=np.float64)
@@ -206,7 +231,7 @@ def main() -> None:
         final_months = walk_forward_folds([VAL_MONTHS[-1]], TRAIN_WINDOW_MONTHS)[0]
         freshest = [*final_months.train_months[1:], final_months.val_month]
         logger.info("final fit on %s..%s", freshest[0], freshest[-1])
-        final_models = fit_models(load_split(freshest))
+        final_models = fit_models_from_split(freshest)
         bundle = export_bundle(final_models, freshest)
         mlflow.log_param("bundle_path", str(bundle))
 
