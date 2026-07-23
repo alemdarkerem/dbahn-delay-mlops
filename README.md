@@ -54,7 +54,7 @@ Key principles:
 |-------|-------|--------|
 | 0 | Skeleton: uv, ruff, mypy, pytest, pre-commit, CI | ✅ |
 | 1 | Data foundation: ingest + validation, EDA, data quality findings | ✅ |
-| 2 | Baseline + first model: features, time-aware CV, MLflow, calibration | 🔜 |
+| 2 | Baseline + first model: features, time-aware CV, MLflow, calibration | ✅ |
 | 3 | Serving: FastAPI, Docker, deploy | 🔜 |
 | 4 | Live loop: DB API fetcher, ground truth, monitoring | 🔜 |
 | 5 | Automated retraining, champion/challenger, README polish | 🔜 |
@@ -118,7 +118,39 @@ From full-dataset EDA over 148.4M rows ([notebook](notebooks/01_eda.ipynb)):
 
 ## Results
 
-_Coming with Phase 2 — model performance vs. baseline, calibration analysis._
+Walk-forward CV: 6 folds, each trained on a rolling 12-month window (~21.5M stops) and
+validated on the following unseen month (2026-01 … 2026-06, ~1.7M stops each). The
+baseline is the honest one to beat: historical delayed-rate / delay quantiles per
+station × train type. All numbers are means over the 6 folds.
+
+**Classification — P(delay ≥ 6 min)** (base rate 19.2%):
+
+| Metric | Baseline | LightGBM | Lift |
+|---|---|---|---|
+| ROC-AUC | 0.720 | **0.796** | +0.076 |
+| PR-AUC | 0.377 | **0.504** | +34% rel. |
+| Brier score ↓ | 0.140 | **0.124** | −11% |
+| Calibration error (ECE) ↓ | 0.015 | **0.011** | — |
+
+The model beats the baseline on every one of the 6 folds (per-fold ROC-AUC
+0.787–0.803 vs 0.716–0.728). ECE ≈ 0.011 means predicted probabilities deviate from
+observed frequencies by ~1pp on average:
+
+![Reliability diagram](docs/img/reliability_2026-06.png)
+
+**Quantile regression — delay in minutes:**
+
+| Metric | Baseline | LightGBM | Lift |
+|---|---|---|---|
+| Pinball loss p50 ↓ | 1.938 | **1.807** | −6.7% |
+| Pinball loss p90 ↓ | 1.800 | **1.604** | −10.9% |
+| MAE of p50 ↓ | 3.88 min | **3.61 min** | −7% |
+| p90 empirical coverage (target 0.90) | 0.906 | 0.887 | — |
+
+Honest read: classification gains are substantial; quantile gains are real but more
+modest — per-entity historical quantiles are already a strong predictor of a heavy-tailed
+target. Model p90 coverage (0.887, per-fold 0.866–0.901) runs slightly optimistic,
+worst in storm-heavy January; recalibrating quantile outputs is on the roadmap.
 
 ## Monitoring
 
