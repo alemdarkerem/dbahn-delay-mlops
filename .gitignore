@@ -42,3 +42,6 @@ mlartifacts/
 
 # Temp training artifacts (uploaded to MLflow)
 /mlruns_artifacts_tmp/
+
+# Local MLflow tracking database
+mlflow.db
