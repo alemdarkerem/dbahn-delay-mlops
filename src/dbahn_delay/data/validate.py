@@ -109,18 +109,23 @@ def check_required_not_null(lf: pl.LazyFrame, max_null_rate: float = 0.0) -> Che
     )
 
 
-def check_delay_range(lf: pl.LazyFrame) -> CheckResult:
-    """Delays must fall inside plausible operational bounds."""
-    out_of_range = (
-        lf.filter(pl.col("delay_in_min").is_between(DELAY_MIN, DELAY_MAX).not_())
-        .select(pl.len())
-        .collect()
-        .item()
-    )
+def check_delay_range(lf: pl.LazyFrame, max_bad_share: float = 0.0) -> CheckResult:
+    """Delays must fall inside plausible operational bounds.
+
+    EDA showed every raw month carries a handful of ±24h sentinel values
+    (day-shift artifacts, ~0.003% of rows), so the raw profile tolerates a
+    tiny share; the processed dataset must be perfectly clean.
+    """
+    counts = lf.select(
+        bad=pl.col("delay_in_min").is_between(DELAY_MIN, DELAY_MAX).not_().sum(),
+        total=pl.len(),
+    ).collect()
+    bad, total = counts.row(0)
+    share = bad / total if total else 1.0
     return CheckResult(
         name="delay_range",
-        passed=out_of_range == 0,
-        details=f"{out_of_range} rows outside [{DELAY_MIN}, {DELAY_MAX}] min",
+        passed=share <= max_bad_share,
+        details=f"{bad} rows ({share:.4%}) outside [{DELAY_MIN}, {DELAY_MAX}] min",
     )
 
 
@@ -151,27 +156,54 @@ def check_time_range(lf: pl.LazyFrame, start: datetime, end: datetime) -> CheckR
     )
 
 
-def validate(lf: pl.LazyFrame, source: str, *, start: datetime, end: datetime) -> ValidationReport:
-    """Run all checks against one dataset and collect a report."""
+def validate(
+    lf: pl.LazyFrame,
+    source: str,
+    *,
+    start: datetime,
+    end: datetime,
+    max_null_rate: float = 0.0,
+    max_bad_delay_share: float = 0.0,
+) -> ValidationReport:
+    """Run all checks against one dataset and collect a report.
+
+    Two profiles are used in practice: raw files get small tolerances
+    (upstream data carries a known trickle of garbage the ingest step drops),
+    the processed dataset gets zero tolerance.
+    """
     results = [
         check_schema(lf),
-        check_required_not_null(lf),
-        check_delay_range(lf),
+        check_required_not_null(lf, max_null_rate=max_null_rate),
+        check_delay_range(lf, max_bad_share=max_bad_delay_share),
         check_duplicate_ids(lf),
         check_time_range(lf, start, end),
     ]
     return ValidationReport(source=source, results=results)
 
 
+# Raw-profile tolerances, calibrated on the full 148M-row EDA (2026-07):
+# station_name nulls peak at 2.35% in early-era months; ±24h delay sentinels
+# peak at ~0.008% of a month. Anything beyond that means upstream changed.
+RAW_MAX_NULL_RATE = 0.03
+RAW_MAX_BAD_DELAY_SHARE = 0.0001
+
+
 def validate_raw_files() -> list[ValidationReport]:
-    """Validate every downloaded monthly file; report per file."""
+    """Validate every downloaded monthly file with the raw (tolerant) profile."""
     reports = []
     for path in sorted(settings.monthly_raw_dir.glob("*.parquet")):
         # File name convention: data-YYYY-MM.parquet
         year, month = map(int, path.stem.removeprefix("data-").split("-"))
         start = datetime(year, month, 1)
         end = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
-        report = validate(pl.scan_parquet(path), path.name, start=start, end=end)
+        report = validate(
+            pl.scan_parquet(path),
+            path.name,
+            start=start,
+            end=end,
+            max_null_rate=RAW_MAX_NULL_RATE,
+            max_bad_delay_share=RAW_MAX_BAD_DELAY_SHARE,
+        )
         logger.info("%s", report.summary())
         reports.append(report)
     return reports
