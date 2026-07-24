@@ -185,7 +185,12 @@ def monitoring() -> dict[str, object]:
     import polars as pl
 
     rows = pl.read_parquet(metrics_path).sort("day").tail(30)
-    return {"days": rows.to_dicts()}
+    latest = rows.tail(1).to_dicts()[0] if rows.height else {}
+    return {
+        "days": rows.to_dicts(),
+        "retraining_recommended": bool(latest.get("retraining_recommended", False)),
+        "reasons": [r for r in str(latest.get("trigger_reasons", "")).split("; ") if r],
+    }
 
 
 @app.get("/stations")
