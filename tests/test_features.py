@@ -15,6 +15,7 @@ from dbahn_delay.features.build import (
     add_scheduled_time,
     build_feature_frame,
 )
+from dbahn_delay.features.network_state import NETWORK_STATE_COLUMNS, add_network_state
 
 
 def stops_frame(rows: list[dict[str, object]]) -> pl.LazyFrame:
@@ -151,3 +152,102 @@ def test_feature_frame_has_targets_and_fold_key() -> None:
     assert out["target_delayed6"][0] is True
     assert out["target_delay_min"][0] == 7
     assert out["fold_month"][0] == "2025-01"
+    assert set(NETWORK_STATE_COLUMNS) <= set(out.columns)
+
+
+# --- network-state features -------------------------------------------------
+# A train scheduled at 16:42 is sealed at 14:05 (first seen in the h+2 plan
+# slice of the 14:05 fetch cycle); its state window is [13:05, 14:05).
+
+
+def network_state(rows: list[dict[str, object]]) -> pl.DataFrame:
+    return (
+        stops_frame(rows)
+        .pipe(add_scheduled_time)
+        .pipe(add_calendar_features)
+        .pipe(add_network_state)
+        .collect()
+        .sort("scheduled_time")
+    )
+
+
+def target_1642() -> dict[str, object]:
+    return {
+        "id": "target",
+        "train_number": "42",
+        "time": datetime(2025, 1, 15, 16, 42),
+        "departure_planned_time": datetime(2025, 1, 15, 16, 42),
+    }
+
+
+def obs_at(hh: int, mm: int, delay: int, **extra: object) -> dict[str, object]:
+    """An observation realized at hh:mm with the given delay."""
+    return {
+        "time": datetime(2025, 1, 15, hh, mm),
+        "departure_planned_time": datetime(2025, 1, 15, hh, mm - delay if mm >= delay else 0),
+        "delay_in_min": delay,
+        **extra,
+    }
+
+
+def test_network_state_sees_observation_inside_seal_window() -> None:
+    out = network_state([obs_at(13, 30, delay=20, train_number="100"), target_1642()])
+    row = out.filter(pl.col("id") == "target")
+    assert row["station_live_mean_delay_60m"][0] == 20.0
+    assert row["station_live_delayed_share_60m"][0] == 1.0
+    assert row["station_live_n_60m"][0] == 1
+
+
+def test_network_state_blind_after_seal() -> None:
+    """The leak test: a shock at 14:10 is invisible to a train sealed at 14:05."""
+    out = network_state([obs_at(14, 10, delay=90, train_number="100"), target_1642()])
+    row = out.filter(pl.col("id") == "target")
+    assert row["station_live_mean_delay_60m"][0] is None
+    assert row["station_live_n_60m"][0] == 0
+    assert row["network_live_mean_delay_60m"][0] is None
+
+
+def test_network_state_window_boundaries() -> None:
+    """[13:05, 14:05): 13:04 is out (too old), 13:06 and 14:04 are in."""
+    out = network_state(
+        [
+            obs_at(13, 4, delay=99, train_number="old"),
+            obs_at(13, 6, delay=10, train_number="in1"),
+            obs_at(14, 4, delay=20, train_number="in2"),
+            target_1642(),
+        ]
+    )
+    row = out.filter(pl.col("id") == "target")
+    assert row["station_live_mean_delay_60m"][0] == 15.0  # (10+20)/2, no 99
+    assert row["station_live_n_60m"][0] == 2
+
+
+def test_network_state_excludes_canceled_observations() -> None:
+    out = network_state(
+        [
+            obs_at(13, 30, delay=50, train_number="ghost", is_canceled=True),
+            obs_at(13, 40, delay=4, train_number="real"),
+            target_1642(),
+        ]
+    )
+    row = out.filter(pl.col("id") == "target")
+    assert row["station_live_mean_delay_60m"][0] == 4.0
+    assert row["station_live_delayed_share_60m"][0] == 0.0  # 4 min < 6-min threshold
+    assert row["station_live_n_60m"][0] == 1
+
+
+def test_network_state_scopes_station_vs_type_vs_network() -> None:
+    """An incident elsewhere reaches the network/type scopes, not the station's."""
+    out = network_state(
+        [
+            obs_at(13, 30, delay=30, train_number="100", station_name="München Hbf"),
+            obs_at(13, 35, delay=12, train_number="200", station_name="Köln Hbf", train_type="RE"),
+            target_1642(),  # ICE at Berlin Hbf
+        ]
+    )
+    row = out.filter(pl.col("id") == "target")
+    assert row["station_live_n_60m"][0] == 0  # nothing observed at Berlin Hbf
+    assert row["station_live_mean_delay_60m"][0] is None
+    assert row["type_live_mean_delay_60m"][0] == 30.0  # only the ICE observation
+    assert row["network_live_mean_delay_60m"][0] == 21.0  # (30+12)/2
+    assert row["network_live_delayed_share_60m"][0] == 1.0

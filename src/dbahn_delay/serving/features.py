@@ -14,7 +14,9 @@ from typing import Any
 import polars as pl
 
 from dbahn_delay.features.build import GRANULARITIES, ROLLING_WINDOWS, add_calendar_features
+from dbahn_delay.features.network_state import NETWORK_STATE_COLUMNS
 from dbahn_delay.serving.loader import STAT_COLUMNS, ModelBundle
+from dbahn_delay.serving.network_state import NetworkStateStore
 from dbahn_delay.serving.overlay import OverlayStore
 
 # A snapshot entry older than the longest window carries no usable signal.
@@ -38,6 +40,7 @@ def assemble_features(
     scheduled_time: datetime,
     train_line_station_num: int | None,
     overlay: OverlayStore | None = None,
+    network_state: NetworkStateStore | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Build the model's feature dict and report the achieved coverage level.
 
@@ -68,6 +71,15 @@ def assemble_features(
 
     def usable(entry: dict[str, Any] | None) -> bool:
         return entry is not None and (event_date - entry["join_date"]).days <= MAX_STALENESS_DAYS
+
+    # Live network state: what the last hour looked like right now (the seal
+    # moment). Absent store or quiet window -> None -> LightGBM missing,
+    # matching training. Bundles that predate these features simply ignore
+    # the extra keys (the matrix is built from bundle metadata).
+    if network_state is not None:
+        row.update(network_state.features(station_name, train_type))
+    else:
+        row.update(dict.fromkeys(NETWORK_STATE_COLUMNS))
 
     coverage = "cold"
     for prefix in GRANULARITIES:

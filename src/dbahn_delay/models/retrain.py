@@ -79,7 +79,14 @@ def rebuild_data() -> None:
     feature_build.main()
 
 
-def score_boosters(clf: Any, q50: Any, q90: Any, val: pl.DataFrame) -> dict[str, float]:
+def score_boosters(
+    clf: Any,
+    q50: Any,
+    q90: Any,
+    val: pl.DataFrame,
+    features: list[str] | None = None,
+    categorical: list[str] | None = None,
+) -> dict[str, float]:
     """Predict a validation month and compute all metrics.
 
     Works for both raw ``lgb.Booster`` (champion, loaded from file — its
@@ -87,8 +94,13 @@ def score_boosters(clf: Any, q50: Any, q90: Any, val: pl.DataFrame) -> dict[str,
     (challenger — its ``predict`` returns LABELS, so ``predict_proba`` must
     be used). The first --force dry run caught exactly this: label outputs
     masquerading as probabilities wrecked AUC/ECE. Probabilities only.
+
+    ``features``/``categorical`` must be the scored model's OWN training
+    schema (the champion's comes from its metadata.json) — after a feature
+    upgrade the champion has fewer columns than the current global list and
+    would otherwise crash on a shape mismatch.
     """
-    x = to_lgb_frame(val)
+    x = to_lgb_frame(val, features, categorical)
     y_cls = val["target_delayed6"].to_numpy().astype(np.float64)
     y_reg = val["target_delay_min"].to_numpy().astype(np.float64)
     if hasattr(clf, "predict_proba"):
@@ -104,7 +116,7 @@ def score_boosters(clf: Any, q50: Any, q90: Any, val: pl.DataFrame) -> dict[str,
     }
 
 
-def champion_boosters() -> tuple[Any, Any, Any, str]:
+def champion_boosters() -> tuple[Any, Any, Any, dict[str, Any]]:
     import os
 
     import lightgbm as lgb
@@ -115,12 +127,12 @@ def champion_boosters() -> tuple[Any, Any, Any, str]:
         if not candidates:
             raise RuntimeError("no champion bundle found - set DBAHN_MODEL_DIR")
         bundle_dir = candidates[-1].parent
-    version = json.loads((bundle_dir / "metadata.json").read_text())["version"]
+    metadata: dict[str, Any] = json.loads((bundle_dir / "metadata.json").read_text())
     return (
         lgb.Booster(model_file=str(bundle_dir / "clf.txt")),
         lgb.Booster(model_file=str(bundle_dir / "q50.txt")),
         lgb.Booster(model_file=str(bundle_dir / "q90.txt")),
-        version,
+        metadata,
     )
 
 
@@ -220,8 +232,18 @@ def main() -> None:
     )
 
     val = load_split([eval_month])
-    clf_c, q50_c, q90_c, champion_version = champion_boosters()
-    champion_metrics = score_boosters(clf_c, q50_c, q90_c, val)
+    clf_c, q50_c, q90_c, champion_meta = champion_boosters()
+    champion_version = str(champion_meta["version"])
+    # Score the champion on ITS OWN feature schema — after a feature upgrade
+    # the current global list is wider than what the stored boosters expect.
+    champion_metrics = score_boosters(
+        clf_c,
+        q50_c,
+        q90_c,
+        val,
+        features=champion_meta["features"],
+        categorical=champion_meta["categorical_features"],
+    )
     logger.info("champion (%s): %s", champion_version, champion_metrics)
 
     challenger = fit_models_from_split(train_months)

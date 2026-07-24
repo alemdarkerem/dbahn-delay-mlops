@@ -13,8 +13,13 @@ GOLDEN_PATH = Path(__file__).parent / "golden_predictions.json"
 
 
 @pytest.fixture(scope="module")
-def client() -> TestClient:
+def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     os.environ["DBAHN_MODEL_DIR"] = str(FIXTURE_BUNDLE)
+    from dbahn_delay import config
+
+    # Pin live_dir to an empty dir: the network-state store must see NO live
+    # files here, or golden predictions would drift with the wall clock.
+    config.settings.live_dir = tmp_path_factory.mktemp("live")
     import dbahn_delay.serving.app as app_module
 
     importlib.reload(app_module)  # re-run bundle loading with the fixture env

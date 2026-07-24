@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from dbahn_delay.serving.features import assemble_features
 from dbahn_delay.serving.loader import ModelBundle
+from dbahn_delay.serving.network_state import NetworkStateStore
 from dbahn_delay.serving.overlay import OverlayStore
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,14 @@ def _overlay_store() -> OverlayStore:
     return OverlayStore(settings.live_dir / "snapshot_overlay")
 
 
+def _network_state_store() -> NetworkStateStore:
+    from dbahn_delay.config import settings
+
+    return NetworkStateStore(settings.live_dir)
+
+
 _overlay = _overlay_store()
+_network_state = _network_state_store()
 
 
 def bundle_or_503() -> ModelBundle:
@@ -107,6 +115,7 @@ def predict(request: PredictRequest) -> PredictResponse:
         scheduled_time=scheduled,
         train_line_station_num=request.train_line_station_num,
         overlay=_overlay,
+        network_state=_network_state,
     )
     x = feature_matrix(bundle, row)
     prob = float(bundle.clf.predict(x)[0])

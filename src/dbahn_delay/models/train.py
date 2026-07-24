@@ -23,6 +23,7 @@ import numpy as np
 import polars as pl
 
 from dbahn_delay.config import settings
+from dbahn_delay.features.network_state import NETWORK_STATE_COLUMNS
 from dbahn_delay.models.baseline import fit_baseline, predict_baseline
 from dbahn_delay.models.cv import Fold, walk_forward_folds
 from dbahn_delay.models.evaluate import (
@@ -59,6 +60,7 @@ NUMERIC = [
     "type_mean_delay_30d",
     "type_delayed_rate_30d",
     "type_count_30d",
+    *NETWORK_STATE_COLUMNS,
 ]
 FEATURES = CATEGORICAL + NUMERIC
 
@@ -85,7 +87,11 @@ def load_split(months: list[str]) -> pl.DataFrame:
     return lf.collect()
 
 
-def to_lgb_frame(df: pl.DataFrame) -> Any:
+def to_lgb_frame(
+    df: pl.DataFrame,
+    features: list[str] | None = None,
+    categorical: list[str] | None = None,
+) -> Any:
     """polars -> pandas, memory-conscious.
 
     Strings are cast to polars Categorical first so the pandas conversion
@@ -93,12 +99,19 @@ def to_lgb_frame(df: pl.DataFrame) -> Any:
     columns (which explode to tens of GB at 20M+ rows). Numerics go to
     float32. LightGBM stores the training categories in the booster and
     re-maps prediction frames by value, so per-frame category codes are safe.
+
+    ``features``/``categorical`` default to the current training schema; the
+    championship passes a stored bundle's own metadata lists instead, so an
+    older champion is always scored on exactly the columns it was trained on.
     """
+    features = FEATURES if features is None else features
+    categorical = CATEGORICAL if categorical is None else categorical
+    numeric = [c for c in features if c not in categorical]
     return (
-        df.select(FEATURES)
+        df.select(features)
         .with_columns(
-            [pl.col(c).cast(pl.Categorical) for c in CATEGORICAL]
-            + [pl.col(c).cast(pl.Float32) for c in NUMERIC]
+            [pl.col(c).cast(pl.Categorical) for c in categorical]
+            + [pl.col(c).cast(pl.Float32) for c in numeric]
         )
         .to_pandas()
     )

@@ -59,6 +59,7 @@ Key principles:
 | 4 | Live loop: DB API fetcher, ground truth, monitoring | ✅ |
 | 5 | Automated retraining, champion/challenger, README polish | ✅ |
 | 6 | Thin demo frontend (station board live at /) | ✅ |
+| 7 | Live network-state features (seal-time replay, +1.5pp PR-AUC, ECE −44%) | ✅ |
 
 ## Quickstart
 
@@ -198,10 +199,13 @@ days, or stale features) and raise `retraining_recommended` on `/monitoring`.
 - **105-station panel.** Predictions for other stations degrade to coarser features
   (`coverage` reports this honestly). All-station data has accumulated since 2025-11 and
   can widen the panel at a future retrain.
-- **No live network-state features yet.** The model's freshest signal is day-old
-  aggregates; intraday cascades (a train arriving already 60 min late) are invisible —
-  measured on day one as the dominant source of large p90 misses. The live loop already
-  collects the data needed to fix this (top of the roadmap below).
+- **Network-state features see the world 2–3 h before departure.** Predictions are
+  sealed at the `(scheduled_hour − 2):05` fetch cycle, so the live features capture
+  disruptions that persist for hours (storms, infrastructure failures, strikes) and
+  their knock-on delays — but a shock that starts and resolves within the seal lead
+  (e.g. a 30-min medical emergency) remains invisible by design. Sealing closer to
+  departure would shrink that blind spot; the accountability contract (first
+  prediction wins) is why we don't quietly re-predict.
 - **Ground truth arrives with ≤15 min latency** and a stop never seen in the change feed
   counts as on time (same convention as the source dataset's collector).
 - **Quantiles are slightly optimistic under drift** (p90 coverage 0.87–0.89 vs 0.90
@@ -211,11 +215,11 @@ days, or stale features) and raise `retraining_recommended` on `/monitoring`.
 
 ## What I'd do next
 
-1. Live network-state features (train's current inbound delay from the change feed;
-   station-level rolling delay of the last 2 h) — biggest expected accuracy win.
-2. Weather features via Open-Meteo (free): storm days drive the worst tail misses.
-3. Conformal recalibration of p90 to restore exact 0.90 coverage under drift.
-4. Widen the station panel using the all-station era.
+1. Weather features via Open-Meteo (free): storm days drive the worst tail misses.
+2. Conformal recalibration of p90 to restore exact 0.90 coverage under drift.
+3. Widen the station panel using the all-station era.
+4. A short-lead prediction tier (sealed ~30 min out, reported separately) to catch
+   fast cascades the 2–3 h seal cannot see.
 
 ## Data & licensing
 
@@ -261,6 +265,24 @@ Honest read: classification gains are substantial; quantile gains are real but m
 modest — per-entity historical quantiles are already a strong predictor of a heavy-tailed
 target. Model p90 coverage (0.887, per-fold 0.866–0.901) runs slightly optimistic,
 worst in storm-heavy January; recalibrating quantile outputs is on the roadmap.
+
+**Live network-state ablation.** Adding seven leak-safe "what is the network doing
+right now?" features (trailing 60-min delay statistics at station / train-type /
+network scope, computed as of the simulated seal time — see
+`features/network_state.py`) and re-running the identical 6-fold protocol:
+
+| Metric (6-fold mean) | Without | With live state | Δ |
+|---|---|---|---|
+| ROC-AUC | 0.796 | **0.803** | +0.007 |
+| PR-AUC | 0.504 | **0.519** | +0.015 |
+| Calibration error (ECE) ↓ | 0.0111 | **0.0062** | −44% |
+| Pinball loss p90 ↓ | 1.604 | **1.550** | −3.4% |
+| p90 empirical coverage (target 0.90) | 0.887 | **0.893** | +0.006 |
+
+Every metric improves; the largest effect is calibration — the model no longer
+over-promises on days when the network is already visibly degraded. The station-scope
+delayed-share ranks 10th of 31 features by gain despite the conservative 2–3 h seal
+lead.
 
 ## Monitoring
 

@@ -47,9 +47,15 @@ CASES: list[dict[str, object]] = [
 def main() -> None:
     os.environ["DBAHN_MODEL_DIR"] = str(FIXTURE_BUNDLE)
     import importlib
+    import tempfile
+    from pathlib import Path as _Path
 
     from fastapi.testclient import TestClient
 
+    from dbahn_delay import config
+
+    # Same pinning as test_api: goldens must never bake in live-state values.
+    config.settings.live_dir = _Path(tempfile.mkdtemp(prefix="golden-live-"))
     import dbahn_delay.serving.app as app_module
 
     importlib.reload(app_module)
