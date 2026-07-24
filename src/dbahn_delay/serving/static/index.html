@@ -118,9 +118,14 @@ async function init() {
   const { stations } = await (await fetch("/stations")).json();
   const select = document.getElementById("station");
   select.innerHTML = stations.map(s => `<option>${s}</option>`).join("");
-  const preferred = "Berlin Hauptbahnhof";
+  // Remember the last chosen station across refreshes
+  const saved = localStorage.getItem("station");
+  const preferred = saved && stations.includes(saved) ? saved : "Berlin Hauptbahnhof";
   if (stations.includes(preferred)) select.value = preferred;
-  select.addEventListener("change", () => loadBoard(select.value));
+  select.addEventListener("change", () => {
+    localStorage.setItem("station", select.value);
+    loadBoard(select.value);
+  });
   await loadBoard(select.value);
   setInterval(() => loadBoard(select.value), 120_000);
 }
