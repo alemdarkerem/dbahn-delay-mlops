@@ -197,7 +197,14 @@ def board(station_name: str, limit: int = 25) -> dict[str, object]:
     if not pred_path.exists():
         return {"station": station_name, "upcoming": [], "departed": [], "note": "no data yet"}
 
-    preds = pl.read_parquet(pred_path).filter(pl.col("station_name") == station_name)
+    preds = (
+        pl.read_parquet(pred_path)
+        .filter(pl.col("station_name") == station_name)
+        # Wing trains / duplicate plan entries yield two stop ids for the same
+        # train at the same minute; show one row (display only — the sealed
+        # data and the daily evaluation keep both stop events).
+        .unique(subset=["train_type", "train_number", "scheduled_time"], keep="first")
+    )
     changes_path = settings.live_dir / "changes" / f"{day}.parquet"
     if changes_path.exists():
         changes = pl.read_parquet(changes_path)
