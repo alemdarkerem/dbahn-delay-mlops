@@ -159,3 +159,48 @@ def test_board_upcoming_live_db_delay(client: TestClient, tmp_path: Path) -> Non
     assert upcoming["reported"]["db_live_delay_min"] == 25
     assert upcoming["silent"]["db_live_delay_min"] is None  # no report != on time
     assert upcoming["axed"]["is_canceled"] is True
+
+
+def test_board_survives_midnight(client: TestClient, tmp_path: Path) -> None:
+    """Trains sealed in YESTERDAY's file (e.g. the 00:30 train sealed at
+    23:05) must still appear after the day flips, and a stop sealed in both
+    files must keep its FIRST prediction."""
+    now = datetime.now(tz=BERLIN)
+    today, yesterday = now.strftime("%Y-%m-%d"), (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    def row(sid: str, sched: datetime, predicted: datetime, prob: float) -> dict[str, object]:
+        return {
+            "stop_id": sid,
+            "station_name": "Berlin Hauptbahnhof",
+            "train_type": "ICE",
+            "train_number": sid,
+            "scheduled_time": sched,
+            "delay_probability": prob,
+            "delay_p50_min": 1.0,
+            "delay_p90_min": 9.0,
+            "coverage": "train",
+            "model_version": "fixture-0",
+            "predicted_at": predicted,
+        }
+
+    (tmp_path / "predictions").mkdir(parents=True)
+    pl.DataFrame(
+        [
+            # departed 20 min ago but sealed yesterday -> was invisible before
+            row("night-owl", now - timedelta(minutes=20), now - timedelta(hours=3), 0.2),
+            # sealed in BOTH files: yesterday's (first) prediction must win
+            row("double", now + timedelta(hours=1), now - timedelta(hours=2), 0.11),
+        ]
+    ).write_parquet(tmp_path / "predictions" / f"{yesterday}.parquet")
+    pl.DataFrame(
+        [
+            row("double", now + timedelta(hours=1), now - timedelta(hours=1), 0.99),
+            row("fresh", now + timedelta(hours=2), now - timedelta(minutes=30), 0.3),
+        ]
+    ).write_parquet(tmp_path / "predictions" / f"{today}.parquet")
+
+    body = client.get("/board/Berlin Hauptbahnhof").json()
+    assert [r["train_number"] for r in body["departed"]] == ["night-owl"]
+    upcoming = {r["train_number"]: r for r in body["upcoming"]}
+    assert set(upcoming) == {"double", "fresh"}
+    assert upcoming["double"]["delay_probability"] == 0.11  # first seal wins
