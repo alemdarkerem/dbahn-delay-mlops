@@ -15,6 +15,7 @@ import holidays
 import polars as pl
 
 from dbahn_delay.config import settings
+from dbahn_delay.features.network_state import NETWORK_STATE_COLUMNS, add_network_state
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,7 @@ def build_feature_frame(lf: pl.LazyFrame) -> pl.LazyFrame:
         non_canceled.pipe(add_scheduled_time)
         .pipe(add_calendar_features)
         .pipe(add_rolling_stats)
+        .pipe(add_network_state)
         .with_columns(
             target_delayed6=(pl.col("delay_in_min") >= DELAYED_THRESHOLD_MIN),
             target_delay_min=pl.col("delay_in_min"),
@@ -180,6 +182,7 @@ def build_feature_frame(lf: pl.LazyFrame) -> pl.LazyFrame:
                 for stat in ("mean_delay", "delayed_rate")
             ],
             *[f"{prefix}_count_{ROLLING_WINDOWS[-1]}d" for prefix in GRANULARITIES],
+            *NETWORK_STATE_COLUMNS,
             "target_delayed6",
             "target_delay_min",
             "fold_month",

@@ -23,6 +23,7 @@ import numpy as np
 import polars as pl
 
 from dbahn_delay.config import settings
+from dbahn_delay.features.network_state import NETWORK_STATE_COLUMNS
 from dbahn_delay.models.baseline import fit_baseline, predict_baseline
 from dbahn_delay.models.cv import Fold, walk_forward_folds
 from dbahn_delay.models.evaluate import (
@@ -59,6 +60,7 @@ NUMERIC = [
     "type_mean_delay_30d",
     "type_delayed_rate_30d",
     "type_count_30d",
+    *NETWORK_STATE_COLUMNS,
 ]
 FEATURES = CATEGORICAL + NUMERIC
 
