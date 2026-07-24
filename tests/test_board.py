@@ -109,3 +109,53 @@ def test_board_splits_upcoming_and_departed(client: TestClient, tmp_path: Path) 
     assert body["departed"][0]["actual_delay_min"] == 12
     # the observed 12-min delay sits inside the predicted p90 of 15
     assert body["departed"][0]["actual_delay_min"] <= body["departed"][0]["delay_p90_min"]
+
+
+def test_board_upcoming_live_db_delay(client: TestClient, tmp_path: Path) -> None:
+    """Upcoming rows expose DB's current estimate; null means no report yet."""
+    now = datetime.now(tz=BERLIN)
+    day = now.strftime("%Y-%m-%d")
+    rows = []
+    for sid in ("reported", "silent", "axed"):
+        rows.append(
+            {
+                "stop_id": sid,
+                "station_name": "Berlin Hauptbahnhof",
+                "train_type": "ICE",
+                "train_number": sid,
+                "scheduled_time": now + timedelta(hours=1),
+                "delay_probability": 0.3,
+                "delay_p50_min": 2.0,
+                "delay_p90_min": 15.0,
+                "coverage": "train",
+                "model_version": "fixture-0",
+                "predicted_at": now - timedelta(hours=1),
+            }
+        )
+    (tmp_path / "predictions").mkdir(parents=True)
+    pl.DataFrame(rows).write_parquet(tmp_path / "predictions" / f"{day}.parquet")
+    (tmp_path / "changes").mkdir(parents=True)
+    pl.DataFrame(
+        [
+            {
+                "stop_id": "reported",
+                "changed_time": now + timedelta(hours=1, minutes=25),
+                "is_canceled": False,
+                "observed_at": now,
+            },
+            {
+                "stop_id": "axed",
+                "changed_time": None,
+                "is_canceled": True,
+                "observed_at": now,
+            },
+        ],
+        schema_overrides={"changed_time": pl.Datetime("us", "Europe/Berlin")},
+    ).write_parquet(tmp_path / "changes" / f"{day}.parquet")
+
+    upcoming = {
+        r["train_number"]: r for r in client.get("/board/Berlin Hauptbahnhof").json()["upcoming"]
+    }
+    assert upcoming["reported"]["db_live_delay_min"] == 25
+    assert upcoming["silent"]["db_live_delay_min"] is None  # no report != on time
+    assert upcoming["axed"]["is_canceled"] is True
