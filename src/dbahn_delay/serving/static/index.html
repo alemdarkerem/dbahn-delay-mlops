@@ -27,6 +27,13 @@
   .ontime { color: #4ade80; } .late { color: #f87171; } .canceled { color: #a78bfa; }
   .hit { color: #4ade80; } .miss { color: #f87171; }
   .note { color: #8a949e; padding: 1rem 0; }
+  .daysep td { color: #7d8791; font-size: .72rem; font-weight: 600;
+               text-transform: uppercase; letter-spacing: .06em;
+               padding: .9rem .5rem .3rem; border-bottom: 1px solid #2c343d; }
+  .more { display: block; margin: .8rem auto 0; background: #1a2027; color: #aab4be;
+          border: 1px solid #2c343d; border-radius: 8px; padding: .45rem 1rem;
+          font-size: .85rem; cursor: pointer; }
+  .more:hover { background: #222a33; }
   footer { margin-top: 2rem; color: #5b646e; font-size: .75rem; line-height: 1.5; }
   footer a { color: #7d8791; }
 </style>
@@ -56,6 +63,25 @@
 <script>
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString("de-DE",
   { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+const dayKey = (iso) => new Date(iso).toLocaleDateString("de-DE",
+  { timeZone: "Europe/Berlin" });
+const fmtDay = (iso) => {
+  const label = new Date(iso).toLocaleDateString("en-GB",
+    { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Berlin" });
+  return dayKey(iso) === dayKey(new Date().toISOString()) ? `${label} (today)` : label;
+};
+// Prefix each row with a date header whenever the calendar day changes,
+// so lists crossing midnight are never ambiguous.
+const withDaySeparators = (rows, rowHtml, cols) => {
+  let lastDay = null;
+  return rows.map(r => {
+    const day = dayKey(r.scheduled_time);
+    const sep = day !== lastDay
+      ? `<tr class="daysep"><td colspan="${cols}">${fmtDay(r.scheduled_time)}</td></tr>` : "";
+    lastDay = day;
+    return sep + rowHtml(r);
+  }).join("");
+};
 const riskClass = (p) => p >= 0.4 ? "high" : p >= 0.2 ? "mid" : "low";
 // Passengers know line labels (RE7), not internal train numbers (17025).
 const trainLabel = (r) => {
@@ -66,7 +92,7 @@ const trainLabel = (r) => {
 
 function upcomingTable(rows) {
   if (!rows.length) return '<div class="note">No upcoming predictions for this station right now (next fetch cycle runs at :05 past the hour).</div>';
-  const tr = rows.map(r => `
+  const tr = withDaySeparators(rows, r => `
     <tr>
       <td>${fmtTime(r.scheduled_time)}</td>
       <td class="train">${trainLabel(r)}</td>
@@ -74,15 +100,19 @@ function upcomingTable(rows) {
       <td>${r.delay_p50_min.toFixed(0)} min</td>
       <td>${r.delay_p90_min.toFixed(0)} min</td>
       <td class="muted">${r.coverage}</td>
-    </tr>`).join("");
+    </tr>`, 6);
   return `<table><thead><tr>
     <th>Time</th><th>Train</th><th>Delay risk (≥6 min)</th><th>Typical (p50)</th>
     <th>Bad day (p90)</th><th>Coverage</th></tr></thead><tbody>${tr}</tbody></table>`;
 }
 
+const DEPARTED_PREVIEW = 12;
+let showAllDeparted = false;
+
 function departedTable(rows) {
   if (!rows.length) return '<div class="note">Nothing departed yet today.</div>';
-  const tr = rows.map(r => {
+  const visible = showAllDeparted ? rows : rows.slice(0, DEPARTED_PREVIEW);
+  const tr = withDaySeparators(visible, r => {
     const actual = r.is_canceled
       ? '<span class="canceled">canceled</span>'
       : (r.actual_delay_min >= 6
@@ -100,16 +130,32 @@ function departedTable(rows) {
       <td>${actual}</td>
       <td>${withinP90}</td>
     </tr>`;
-  }).join("");
+  }, 7);
+  const more = rows.length > DEPARTED_PREVIEW
+    ? `<button class="more" id="toggle-departed">${showAllDeparted
+        ? "Show fewer" : `View all ${rows.length} departed trains`}</button>`
+    : "";
   return `<table><thead><tr>
     <th>Time</th><th>Train</th><th>Predicted risk</th><th>Typical (p50)</th>
-    <th>Bad day (p90)</th><th>Actual delay</th><th>Within p90?</th></tr></thead><tbody>${tr}</tbody></table>`;
+    <th>Bad day (p90)</th><th>Actual delay</th><th>Within p90?</th></tr></thead><tbody>${tr}</tbody></table>${more}`;
+}
+
+let departedRows = [];
+
+function renderDeparted() {
+  document.getElementById("departed").innerHTML = departedTable(departedRows);
+  const toggle = document.getElementById("toggle-departed");
+  if (toggle) toggle.addEventListener("click", () => {
+    showAllDeparted = !showAllDeparted;
+    renderDeparted();
+  });
 }
 
 async function loadBoard(station) {
   const data = await (await fetch(`/board/${encodeURIComponent(station)}?limit=500`)).json();
   document.getElementById("upcoming").innerHTML = upcomingTable(data.upcoming || []);
-  document.getElementById("departed").innerHTML = departedTable(data.departed || []);
+  departedRows = data.departed || [];
+  renderDeparted();
 }
 
 async function init() {
@@ -124,6 +170,7 @@ async function init() {
   if (stations.includes(preferred)) select.value = preferred;
   select.addEventListener("change", () => {
     localStorage.setItem("station", select.value);
+    showAllDeparted = false;  // new station -> back to the compact view
     loadBoard(select.value);
   });
   await loadBoard(select.value);
