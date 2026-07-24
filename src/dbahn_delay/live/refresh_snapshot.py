@@ -70,8 +70,10 @@ def observed_stops(now: datetime) -> pl.DataFrame | None:
             .cast(pl.Int32),
             event_date=pl.col("scheduled_time").dt.date(),
         )
-        # only settled stops: the event must be in the past
-        .filter(pl.col("scheduled_time") < now)
+        # only COMPLETED days: today's partial observations would bias the
+        # stats optimistically (delays not yet reported) and push join_date
+        # into tomorrow (negative freshness - caught on first live run)
+        .filter(pl.col("event_date") < now.date())
         .select(
             "station_name",
             "train_type",

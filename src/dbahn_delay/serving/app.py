@@ -156,7 +156,9 @@ def health() -> HealthResponse:
     today = datetime.now(tz=BERLIN).date()
     bundle_age = bundle.stats_age_days(today)
     overlay_newest = _overlay.newest_join_date()
-    freshness = min(bundle_age, (today - overlay_newest).days) if overlay_newest else bundle_age
+    freshness = (
+        min(bundle_age, max(0, (today - overlay_newest).days)) if overlay_newest else bundle_age
+    )
     return HealthResponse(
         status="ok",
         model_version=bundle.version,
