@@ -81,6 +81,7 @@ def predict_stops(
                 "station_name": stop.station_name,
                 "train_type": stop.train_type,
                 "train_number": stop.train_number,
+                "line": stop.line,
                 "scheduled_time": stop.scheduled_time,
                 "delay_probability": result["delay_probability"],
                 "delay_p50_min": result["delay_p50_min"],
@@ -102,7 +103,7 @@ def append_new_predictions(new: pl.DataFrame, day: str) -> int:
         new = new.filter(~pl.col("stop_id").is_in(existing["stop_id"]))
         if new.is_empty():
             return 0
-        pl.concat([existing, new]).write_parquet(path)
+        pl.concat([existing, new], how="diagonal_relaxed").write_parquet(path)
     else:
         new.write_parquet(path)
     return new.height
@@ -161,6 +162,7 @@ def run_cycle(now: datetime | None = None, predict: PredictFn | None = None) -> 
                                 train_number=stop.train_number,
                                 scheduled_time=stop.scheduled_time,
                                 has_departure=stop.has_departure,
+                                line=stop.line,
                             )
                         )
                 all_changes.extend(parse_changes(client.fetch_changes(info["eva"])))

@@ -21,6 +21,7 @@ class PlannedStop:
     train_number: str
     scheduled_time: datetime  # departure preferred, else arrival (schedule semantics)
     has_departure: bool
+    line: str | None = None  # passenger-facing line label ("7", "RE5", "FEX")
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ def parse_plan(xml_text: str) -> list[PlannedStop]:
                 train_number=tl.attrib.get("n", ""),
                 scheduled_time=parse_ts(pt),
                 has_departure=dp is not None,
+                line=event.attrib.get("l"),
             )
         )
     return stops

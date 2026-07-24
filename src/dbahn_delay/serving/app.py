@@ -247,9 +247,12 @@ def board(station_name: str, limit: int = 25) -> dict[str, object]:
         .dt.total_minutes()
         .fill_null(0),
     )
+    if "line" not in preds.columns:
+        preds = preds.with_columns(line=pl.lit(None, dtype=pl.String))
     columns = [
         "train_type",
         "train_number",
+        "line",
         "scheduled_time",
         "delay_probability",
         "delay_p50_min",
