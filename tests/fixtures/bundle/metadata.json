@@ -29,7 +29,14 @@
     "type_delayed_rate_14d",
     "type_mean_delay_30d",
     "type_delayed_rate_30d",
-    "type_count_30d"
+    "type_count_30d",
+    "station_live_mean_delay_60m",
+    "station_live_delayed_share_60m",
+    "station_live_n_60m",
+    "type_live_mean_delay_60m",
+    "type_live_delayed_share_60m",
+    "network_live_mean_delay_60m",
+    "network_live_delayed_share_60m"
   ],
   "categorical_features": [
     "station_name",

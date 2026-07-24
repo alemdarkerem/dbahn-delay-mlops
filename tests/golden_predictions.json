@@ -9,9 +9,9 @@
       "train_line_station_num": 3
     },
     "expected": {
-      "delay_probability": 0.5355,
-      "delay_p50_min": 7.3,
-      "delay_p90_min": 24.4,
+      "delay_probability": 0.6572,
+      "delay_p50_min": 11.6,
+      "delay_p90_min": 29.1,
       "coverage": "train",
       "model_version": "fixture-0"
     }
@@ -25,9 +25,9 @@
       "scheduled_time": "2026-07-03T08:00:00"
     },
     "expected": {
-      "delay_probability": 0.2156,
-      "delay_p50_min": 1.7,
-      "delay_p90_min": 19.5,
+      "delay_probability": 0.251,
+      "delay_p50_min": 1.9,
+      "delay_p90_min": 19.3,
       "coverage": "train",
       "model_version": "fixture-0"
     }
@@ -42,9 +42,9 @@
       "train_line_station_num": 10
     },
     "expected": {
-      "delay_probability": 0.253,
-      "delay_p50_min": 1.4,
-      "delay_p90_min": 21.0,
+      "delay_probability": 0.2288,
+      "delay_p50_min": 2.0,
+      "delay_p90_min": 19.7,
       "coverage": "train",
       "model_version": "fixture-0"
     }

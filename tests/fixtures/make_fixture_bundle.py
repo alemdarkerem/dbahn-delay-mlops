@@ -53,9 +53,24 @@ def synthetic_frame(n: int, rng: np.random.Generator) -> pl.DataFrame:
             pl.Series(f"{prefix}_delayed_rate_30d", rng.random(n) * 0.5),
             pl.Series(f"{prefix}_count_30d", rng.integers(10, 500, n).astype(np.float64)),
         )
+    # Live network-state features (with realistic missingness: quiet windows)
+    quiet = rng.random(n) < 0.1
+    df = df.with_columns(
+        pl.Series("station_live_mean_delay_60m", np.where(quiet, np.nan, rng.gamma(2, 2, n))),
+        pl.Series("station_live_delayed_share_60m", np.where(quiet, np.nan, rng.random(n) * 0.5)),
+        pl.Series(
+            "station_live_n_60m", np.where(quiet, 0, rng.integers(1, 60, n)).astype(np.float64)
+        ),
+        pl.Series("type_live_mean_delay_60m", rng.gamma(2, 2, n)),
+        pl.Series("type_live_delayed_share_60m", rng.random(n) * 0.5),
+        pl.Series("network_live_mean_delay_60m", rng.gamma(2, 2, n)),
+        pl.Series("network_live_delayed_share_60m", rng.random(n) * 0.5),
+    )
     ice = (df["train_type"] == "ICE").to_numpy()
     rush = ((df["scheduled_hour"] > 15) & (df["scheduled_hour"] < 20)).to_numpy()
-    rate = 0.08 + 0.3 * ice + 0.15 * rush + 0.3 * df["type_delayed_rate_30d"].to_numpy()
+    live = np.nan_to_num(df["station_live_delayed_share_60m"].to_numpy(), nan=0.2)
+    hist = df["type_delayed_rate_30d"].to_numpy()
+    rate = 0.06 + 0.3 * ice + 0.15 * rush + 0.3 * hist + 0.1 * live
     delayed = rng.random(n) < rate
     delay_min = np.where(delayed, rng.gamma(2, 8, n) + 6, rng.gamma(1, 1.5, n)).round()
     return df.with_columns(
