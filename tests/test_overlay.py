@@ -119,3 +119,44 @@ def test_assemble_features_prefers_fresh_overlay(
     assert row["train_mean_delay_30d"] == 15.0
     # Granularity absent from overlay falls back to the bundle snapshot
     assert row["station_type_mean_delay_30d"] is not None
+
+
+def test_refresh_excludes_todays_partial_day(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Today's half-reported observations must not enter the stats.
+
+    First live run regression: partial today pushed join_date to tomorrow
+    (negative freshness) and biased stats optimistically.
+    """
+    from dbahn_delay import config
+
+    monkeypatch.setattr(config.settings, "live_dir", tmp_path)
+    seed_live_data(tmp_path)
+    # add a TODAY observation with an absurd delay; it must be ignored
+    day = NOW.strftime("%Y-%m-%d")
+    scheduled = NOW - timedelta(hours=2)
+    pl.DataFrame(
+        [
+            {
+                "stop_id": "today",
+                "station_name": "Berlin Hauptbahnhof",
+                "train_type": "ICE",
+                "train_number": "1601",
+                "scheduled_time": scheduled,
+                "delay_probability": 0.5,
+                "delay_p50_min": 5.0,
+                "delay_p90_min": 20.0,
+                "coverage": "train",
+                "model_version": "test",
+                "predicted_at": scheduled - timedelta(hours=2),
+            }
+        ]
+    ).write_parquet(tmp_path / "predictions" / f"{day}.parquet")
+
+    refresh(now=NOW)
+    store = OverlayStore(tmp_path / "snapshot_overlay")
+    entry = store.get("train", ("ICE", "1601"))
+    assert entry is not None
+    assert entry["train_mean_delay_30d"] == 15.0  # unchanged: today excluded
+    assert entry["join_date"] <= NOW.date()  # freshness can never be negative
