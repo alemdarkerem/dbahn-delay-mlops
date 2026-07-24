@@ -57,13 +57,19 @@
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString("de-DE",
   { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 const riskClass = (p) => p >= 0.4 ? "high" : p >= 0.2 ? "mid" : "low";
+// Passengers know line labels (RE7), not internal train numbers (17025).
+const trainLabel = (r) => {
+  if (!r.line) return `${r.train_type} ${r.train_number}`;
+  const line = /^[A-Za-z]/.test(r.line) ? r.line : `${r.train_type}${r.line}`;
+  return `${line} <span class="muted">· ${r.train_number}</span>`;
+};
 
 function upcomingTable(rows) {
   if (!rows.length) return '<div class="note">No upcoming predictions for this station right now (next fetch cycle runs at :05 past the hour).</div>';
   const tr = rows.map(r => `
     <tr>
       <td>${fmtTime(r.scheduled_time)}</td>
-      <td class="train">${r.train_type} ${r.train_number}</td>
+      <td class="train">${trainLabel(r)}</td>
       <td class="risk ${riskClass(r.delay_probability)}">${Math.round(r.delay_probability * 100)}%</td>
       <td>${r.delay_p50_min.toFixed(0)} min</td>
       <td>${r.delay_p90_min.toFixed(0)} min</td>
@@ -87,7 +93,7 @@ function departedTable(rows) {
           ? '<span class="hit">✓</span>' : '<span class="miss">✗</span>');
     return `<tr>
       <td>${fmtTime(r.scheduled_time)}</td>
-      <td class="train">${r.train_type} ${r.train_number}</td>
+      <td class="train">${trainLabel(r)}</td>
       <td class="risk ${riskClass(r.delay_probability)}">${Math.round(r.delay_probability * 100)}%</td>
       <td>${r.delay_p50_min.toFixed(0)} min</td>
       <td>${r.delay_p90_min.toFixed(0)} min</td>

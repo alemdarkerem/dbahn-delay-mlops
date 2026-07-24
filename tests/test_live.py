@@ -24,6 +24,10 @@ PLAN_XML = """<?xml version='1.0' encoding='UTF-8'?>
     <tl f="F" t="p" o="80" c="ICE" n="605"/>
     <ar pt="2607231822" pp="3" fb="ICE 605" ppth="Hamburg Hbf"/>
   </s>
+  <s id="re7-line-label">
+    <tl f="N" t="p" o="800165" c="RE" n="17025"/>
+    <dp pt="2607231850" pp="2" l="7" ppth="Karlsruhe Hbf"/>
+  </s>
   <s id="broken-no-time"><tl c="RE" n="1"/><dp pp="1"/></s>
 </timetable>"""
 
@@ -37,12 +41,16 @@ CHANGES_XML = """<?xml version='1.0' encoding='UTF-8'?>
 
 def test_parse_plan_extracts_stops_and_skips_broken() -> None:
     stops = parse_plan(PLAN_XML)
-    assert len(stops) == 2  # broken row without pt skipped
+    assert len(stops) == 3  # broken row without pt skipped
+    re7 = next(st for st in stops if st.stop_id == "re7-line-label")
+    assert re7.line == "7"  # passenger-facing label captured
+    assert re7.train_number == "17025"
     ice542 = stops[0]
     assert ice542.train_type == "ICE"
     assert ice542.train_number == "542"
     assert ice542.scheduled_time == datetime(2026, 7, 23, 18, 47, tzinfo=BERLIN)
     assert ice542.has_departure
+    assert stops[0].line is None  # long-distance trains often carry no line
     assert not stops[1].has_departure  # arrival-only stop (terminus)
 
 
