@@ -1,5 +1,7 @@
 """Tests for promotion rules and new-month detection."""
 
+from typing import Any
+
 import pytest
 
 from dbahn_delay.models import retrain
@@ -38,6 +40,51 @@ def test_calibration_regression_blocks_promotion() -> None:
     promoted, failures = promotion_verdict(CHAMPION, challenger(pr_auc=0.55, ece=0.05))
     assert not promoted  # better AUC does NOT excuse worse calibration
     assert any("ece" in f for f in failures)
+
+
+def test_score_boosters_uses_probabilities_not_labels() -> None:
+    """Regression: sklearn classifiers return LABELS from predict().
+
+    The first dry run scored a challenger with 0/1 labels as 'probabilities'
+    (AUC collapsed 0.80 -> 0.62). score_boosters must use predict_proba.
+    """
+    import numpy as np
+    import polars as pl
+
+    from dbahn_delay.models.retrain import score_boosters
+
+    class SklearnStyleClf:
+        def predict(self, x: object) -> "np.ndarray[Any, Any]":
+            raise AssertionError("predict() must not be used on sklearn classifiers")
+
+        def predict_proba(self, x: object) -> "np.ndarray[Any, Any]":
+            return np.array([[0.3, 0.7], [0.9, 0.1]])
+
+    class Reg:
+        def __init__(self, value: float) -> None:
+            self.value = value
+
+        def predict(self, x: object) -> "np.ndarray[Any, Any]":
+            return np.array([self.value, self.value])
+
+    from dbahn_delay.models.train import FEATURES
+
+    val = pl.DataFrame(
+        {
+            **{
+                f: [None, None]
+                for f in FEATURES
+                if f not in ("station_name", "train_type", "train_number")
+            },
+            "station_name": ["A", "B"],
+            "train_type": ["ICE", "S"],
+            "train_number": ["1", "2"],
+            "target_delayed6": [True, False],
+            "target_delay_min": [10, 0],
+        }
+    )
+    metrics = score_boosters(SklearnStyleClf(), Reg(5.0), Reg(20.0), val)
+    assert metrics["roc_auc"] == 1.0  # 0.7 for the positive, 0.1 for the negative
 
 
 def test_new_months_detection(monkeypatch: pytest.MonkeyPatch) -> None:

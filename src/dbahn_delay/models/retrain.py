@@ -80,13 +80,22 @@ def rebuild_data() -> None:
 
 
 def score_boosters(clf: Any, q50: Any, q90: Any, val: pl.DataFrame) -> dict[str, float]:
-    """Predict a validation month with raw boosters and compute all metrics."""
+    """Predict a validation month and compute all metrics.
+
+    Works for both raw ``lgb.Booster`` (champion, loaded from file — its
+    ``predict`` returns probabilities) and sklearn ``LGBMClassifier``
+    (challenger — its ``predict`` returns LABELS, so ``predict_proba`` must
+    be used). The first --force dry run caught exactly this: label outputs
+    masquerading as probabilities wrecked AUC/ECE. Probabilities only.
+    """
     x = to_lgb_frame(val)
     y_cls = val["target_delayed6"].to_numpy().astype(np.float64)
     y_reg = val["target_delay_min"].to_numpy().astype(np.float64)
-    prob = np.asarray(clf.predict(x), dtype=np.float64)
-    if prob.ndim == 2:  # sklearn predict_proba shape
-        prob = prob[:, 1]
+    if hasattr(clf, "predict_proba"):
+        prob = np.asarray(clf.predict_proba(x), dtype=np.float64)[:, 1]
+    else:
+        prob = np.asarray(clf.predict(x), dtype=np.float64)
+    assert prob.ndim == 1 and np.all((prob >= 0) & (prob <= 1)), "not probabilities"
     p50 = np.asarray(q50.predict(x), dtype=np.float64)
     p90 = np.maximum(np.asarray(q90.predict(x), dtype=np.float64), p50)
     return {
@@ -195,7 +204,11 @@ def main() -> None:
         logger.info("new months on HF: %s - rebuilding data", ", ".join(fresh))
         rebuild_data()
     elif force:
-        logger.warning("no new months; --force set, continuing with existing data")
+        logger.warning(
+            "no new months; --force set, continuing with existing data. NOTE: in "
+            "force mode the eval month may sit inside the champion's training "
+            "window (champion advantage - biases safely toward KEEP CHAMPION)"
+        )
     else:
         logger.info("no new months on HF - nothing to do (use --force to test the flow)")
         return
