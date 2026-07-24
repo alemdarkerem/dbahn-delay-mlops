@@ -45,6 +45,30 @@ def test_board_without_data_returns_note(client: TestClient) -> None:
     assert "note" in body
 
 
+def test_board_dedupes_wing_train_rows(client: TestClient, tmp_path: Path) -> None:
+    """Two stop ids for the same train+minute render as one board row."""
+    now = datetime.now(tz=BERLIN)
+    day = now.strftime("%Y-%m-%d")
+    base = {
+        "station_name": "Berlin Hauptbahnhof",
+        "train_type": "ICE",
+        "train_number": "241",
+        "scheduled_time": now + timedelta(hours=1),
+        "delay_probability": 0.45,
+        "delay_p50_min": 7.0,
+        "delay_p90_min": 31.0,
+        "coverage": "train",
+        "model_version": "fixture-0",
+        "predicted_at": now,
+    }
+    rows = [base | {"stop_id": "wing-a"}, base | {"stop_id": "wing-b"}]
+    (tmp_path / "predictions").mkdir(parents=True)
+    pl.DataFrame(rows).write_parquet(tmp_path / "predictions" / f"{day}.parquet")
+
+    body = client.get("/board/Berlin Hauptbahnhof").json()
+    assert len(body["upcoming"]) == 1
+
+
 def test_board_splits_upcoming_and_departed(client: TestClient, tmp_path: Path) -> None:
     now = datetime.now(tz=BERLIN)
     day = now.strftime("%Y-%m-%d")

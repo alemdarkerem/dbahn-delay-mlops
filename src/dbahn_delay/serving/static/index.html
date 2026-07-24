@@ -89,14 +89,15 @@ function departedTable(rows) {
       <td>${fmtTime(r.scheduled_time)}</td>
       <td class="train">${r.train_type} ${r.train_number}</td>
       <td class="risk ${riskClass(r.delay_probability)}">${Math.round(r.delay_probability * 100)}%</td>
-      <td>${r.delay_p50_min.toFixed(0)}–${r.delay_p90_min.toFixed(0)} min</td>
+      <td>${r.delay_p50_min.toFixed(0)} min</td>
+      <td>${r.delay_p90_min.toFixed(0)} min</td>
       <td>${actual}</td>
       <td>${withinP90}</td>
     </tr>`;
   }).join("");
   return `<table><thead><tr>
-    <th>Time</th><th>Train</th><th>Predicted risk</th><th>Predicted p50–p90</th>
-    <th>Actual delay</th><th>Within p90?</th></tr></thead><tbody>${tr}</tbody></table>`;
+    <th>Time</th><th>Train</th><th>Predicted risk</th><th>Typical (p50)</th>
+    <th>Bad day (p90)</th><th>Actual delay</th><th>Within p90?</th></tr></thead><tbody>${tr}</tbody></table>`;
 }
 
 async function loadBoard(station) {
