@@ -220,27 +220,42 @@ def board(station_name: str, limit: int = 25) -> dict[str, object]:
     include the observed delay (no change record => assumed on time), which
     makes the model's accuracy publicly visible per train.
     """
+    from datetime import timedelta
+
     import polars as pl
 
     from dbahn_delay.config import settings
 
     now = datetime.now(tz=BERLIN)
-    day = now.strftime("%Y-%m-%d")
-    pred_path = settings.live_dir / "predictions" / f"{day}.parquet"
-    if not pred_path.exists():
+    # Trains scheduled shortly after midnight were sealed the evening before
+    # and live in YESTERDAY's file (files are keyed by fetch day, not by the
+    # scheduled day) — read both days so the board doesn't reset at 00:00.
+    days = [(now - timedelta(days=1)).strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d")]
+    pred_paths = [
+        p for d in days if (p := settings.live_dir / "predictions" / f"{d}.parquet").exists()
+    ]
+    if not pred_paths:
         return {"station": station_name, "upcoming": [], "departed": [], "note": "no data yet"}
 
     preds = (
-        pl.read_parquet(pred_path)
+        pl.concat([pl.read_parquet(p) for p in pred_paths], how="diagonal_relaxed")
         .filter(pl.col("station_name") == station_name)
-        # Wing trains / duplicate plan entries yield two stop ids for the same
-        # train at the same minute; show one row (display only — the sealed
-        # data and the daily evaluation keep both stop events).
+        # First seal wins across day files (hour-01 stops used to be sealed in
+        # both), then collapse wing trains / duplicate plan entries (display
+        # only — the sealed data and the daily evaluation keep both stops).
+        .sort("predicted_at")
+        .unique(subset="stop_id", keep="first")
         .unique(subset=["train_type", "train_number", "scheduled_time"], keep="first")
     )
-    changes_path = settings.live_dir / "changes" / f"{day}.parquet"
-    if changes_path.exists():
-        changes = pl.read_parquet(changes_path)
+    change_paths = [
+        p for d in days if (p := settings.live_dir / "changes" / f"{d}.parquet").exists()
+    ]
+    if change_paths:
+        changes = (
+            pl.concat([pl.read_parquet(p) for p in change_paths])
+            .sort("observed_at")
+            .unique(subset="stop_id", keep="last")
+        )
         preds = preds.join(
             changes.select("stop_id", "changed_time", "is_canceled"), on="stop_id", how="left"
         )
@@ -282,7 +297,12 @@ def board(station_name: str, limit: int = 25) -> dict[str, object]:
         .select(columns)
     )
     departed = (
-        preds.filter(pl.col("scheduled_time") < now)
+        preds.filter(
+            pl.col("scheduled_time") < now,
+            # keep the board focused: one day of history (labeled by day
+            # headers in the UI), not everything the files still hold
+            pl.col("scheduled_time") >= now - timedelta(hours=24),
+        )
         .sort("scheduled_time", descending=True)
         .head(limit)
         .select(columns)

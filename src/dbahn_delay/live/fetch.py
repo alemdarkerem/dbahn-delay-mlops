@@ -95,15 +95,27 @@ def predict_stops(
 
 
 def append_new_predictions(new: pl.DataFrame, day: str) -> int:
-    """Append rows whose stop_id is not logged yet (first prediction wins)."""
+    """Append rows whose stop_id is not logged yet (first prediction wins).
+
+    The check spans YESTERDAY's file too: hour-01 stops are first seen by the
+    23:05 cycle (h+2 slice, previous day's file) and again by the 00:05 cycle
+    (h+1 slice) — without the cross-day check they were sealed twice and
+    counted in two daily reports.
+    """
     path = predictions_path(day)
     path.parent.mkdir(parents=True, exist_ok=True)
+    prev_day = (datetime.strptime(day, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    prev_path = predictions_path(prev_day)
+    if prev_path.exists():
+        new = new.filter(~pl.col("stop_id").is_in(pl.read_parquet(prev_path)["stop_id"]))
     if path.exists():
         existing = pl.read_parquet(path)
         new = new.filter(~pl.col("stop_id").is_in(existing["stop_id"]))
         if new.is_empty():
             return 0
         pl.concat([existing, new], how="diagonal_relaxed").write_parquet(path)
+    elif new.is_empty():
+        return 0
     else:
         new.write_parquet(path)
     return new.height

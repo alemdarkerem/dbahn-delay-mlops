@@ -100,6 +100,21 @@ def test_append_new_predictions_is_idempotent(
     assert stored["stop_id"].n_unique() == 3
 
 
+def test_append_new_predictions_dedupes_across_midnight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An hour-01 stop sealed by the 23:05 cycle (yesterday's file) must not
+    be sealed again by the 00:05 cycle (today's file) — first seal wins
+    across day files, not just within one."""
+    from dbahn_delay import config
+
+    monkeypatch.setattr(config.settings, "live_dir", tmp_path)
+    assert append_new_predictions(prediction_frame(["night-owl"]), "2026-07-23") == 1
+    assert append_new_predictions(prediction_frame(["night-owl", "fresh"]), "2026-07-24") == 1
+    today = pl.read_parquet(tmp_path / "predictions" / "2026-07-24.parquet")
+    assert today["stop_id"].to_list() == ["fresh"]
+
+
 def test_upsert_changes_keeps_latest_observation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

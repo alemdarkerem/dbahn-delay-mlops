@@ -129,8 +129,11 @@ function departedTable(rows) {
       : (r.actual_delay_min >= 6
           ? `<span class="late">+${r.actual_delay_min} min</span>`
           : `<span class="ontime">+${r.actual_delay_min} min</span>`);
+    // Verdict from the DISPLAYED (rounded) numbers, so a reader can verify it
+    // from the row itself ("3 ≤ 3 but ✗" was a rounding illusion: raw p90 2.5
+    // shown as 3). The daily accuracy metrics keep using raw values.
     const withinP90 = r.is_canceled ? "—"
-      : (r.actual_delay_min <= r.delay_p90_min
+      : (r.actual_delay_min <= Number(r.delay_p90_min.toFixed(0))
           ? '<span class="hit">✓</span>' : '<span class="miss">✗</span>');
     return `<tr>
       <td>${fmtTime(r.scheduled_time)}</td>
