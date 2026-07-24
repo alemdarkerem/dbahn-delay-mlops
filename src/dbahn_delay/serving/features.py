@@ -15,6 +15,7 @@ import polars as pl
 
 from dbahn_delay.features.build import GRANULARITIES, ROLLING_WINDOWS, add_calendar_features
 from dbahn_delay.serving.loader import STAT_COLUMNS, ModelBundle
+from dbahn_delay.serving.overlay import OverlayStore
 
 # A snapshot entry older than the longest window carries no usable signal.
 MAX_STALENESS_DAYS = max(ROLLING_WINDOWS)
@@ -36,8 +37,14 @@ def assemble_features(
     train_number: str,
     scheduled_time: datetime,
     train_line_station_num: int | None,
+    overlay: OverlayStore | None = None,
 ) -> tuple[dict[str, Any], str]:
-    """Build the model's feature dict and report the achieved coverage level."""
+    """Build the model's feature dict and report the achieved coverage level.
+
+    Per granularity the OVERLAY (daily live-derived stats) is consulted first,
+    the bundle snapshot second — freshest usable window wins. Both go through
+    the same staleness tolerance.
+    """
     cal = calendar_row(scheduled_time)
     event_date = cal["event_date"]
 
@@ -58,10 +65,16 @@ def assemble_features(
         "station_type": (station_name, train_type),
         "type": (train_type,),
     }
+
+    def usable(entry: dict[str, Any] | None) -> bool:
+        return entry is not None and (event_date - entry["join_date"]).days <= MAX_STALENESS_DAYS
+
     coverage = "cold"
     for prefix in GRANULARITIES:
-        entry = bundle.stats[prefix].get(entity_keys[prefix])
-        fresh = entry is not None and (event_date - entry["join_date"]).days <= MAX_STALENESS_DAYS
+        entry = overlay.get(prefix, entity_keys[prefix]) if overlay else None
+        if not usable(entry):
+            entry = bundle.stats[prefix].get(entity_keys[prefix])
+        fresh = usable(entry)
         for col in STAT_COLUMNS[prefix]:
             row[col] = entry[col] if fresh and entry is not None else None
         if fresh and coverage == "cold":

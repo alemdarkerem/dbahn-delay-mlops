@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from dbahn_delay.serving.features import assemble_features
 from dbahn_delay.serving.loader import ModelBundle
+from dbahn_delay.serving.overlay import OverlayStore
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,8 @@ class PredictResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     model_version: str
-    stats_age_days: int
+    stats_age_days: int  # bundle snapshot age (training-time features)
+    feature_freshness_days: int  # freshest usable source (overlay wins if present)
 
 
 def load_bundle() -> ModelBundle | None:
@@ -75,6 +77,15 @@ app = FastAPI(
 _bundle = load_bundle()
 
 
+def _overlay_store() -> OverlayStore:
+    from dbahn_delay.config import settings
+
+    return OverlayStore(settings.live_dir / "snapshot_overlay")
+
+
+_overlay = _overlay_store()
+
+
 def bundle_or_503() -> ModelBundle:
     if _bundle is None:
         raise HTTPException(status_code=503, detail="model bundle not loaded")
@@ -95,6 +106,7 @@ def predict(request: PredictRequest) -> PredictResponse:
         train_number=request.train_number,
         scheduled_time=scheduled,
         train_line_station_num=request.train_line_station_num,
+        overlay=_overlay,
     )
     x = feature_matrix(bundle, row)
     prob = float(bundle.clf.predict(x)[0])
@@ -141,10 +153,15 @@ def feature_matrix(bundle: ModelBundle, row: dict[str, object]) -> "np.ndarray[A
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     bundle = bundle_or_503()
+    today = datetime.now(tz=BERLIN).date()
+    bundle_age = bundle.stats_age_days(today)
+    overlay_newest = _overlay.newest_join_date()
+    freshness = min(bundle_age, (today - overlay_newest).days) if overlay_newest else bundle_age
     return HealthResponse(
         status="ok",
         model_version=bundle.version,
-        stats_age_days=bundle.stats_age_days(datetime.now(tz=BERLIN).date()),
+        stats_age_days=bundle_age,
+        feature_freshness_days=freshness,
     )
 
 
