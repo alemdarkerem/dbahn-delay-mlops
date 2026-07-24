@@ -246,6 +246,10 @@ def board(station_name: str, limit: int = 25) -> dict[str, object]:
         actual_delay_min=(pl.col("changed_time") - pl.col("scheduled_time"))
         .dt.total_minutes()
         .fill_null(0),
+        # DB's own current estimate for trains that have not departed yet.
+        # Deliberately NOT null-filled: null means "no DB report yet", which
+        # the board must show differently from "+0 min (on time per DB)".
+        db_live_delay_min=(pl.col("changed_time") - pl.col("scheduled_time")).dt.total_minutes(),
     )
     if "line" not in preds.columns:
         preds = preds.with_columns(line=pl.lit(None, dtype=pl.String))
@@ -260,6 +264,7 @@ def board(station_name: str, limit: int = 25) -> dict[str, object]:
         "coverage",
         "is_canceled",
         "actual_delay_min",
+        "db_live_delay_min",
     ]
     upcoming = (
         preds.filter(pl.col("scheduled_time") >= now)

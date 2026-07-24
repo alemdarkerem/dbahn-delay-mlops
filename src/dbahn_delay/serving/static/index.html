@@ -56,6 +56,8 @@
   <footer>
     Predictions are sealed before each train runs (first prediction wins — no hindsight edits).
     p50/p90: "half the time at most X min" / "9 times out of 10 at most Y min".
+    Live (DB) is Deutsche Bahn's own current estimate (refreshed every ~15 min, "—" = no report yet);
+    our forecast never updates after sealing.
     Data by Deutsche Bahn (CC BY 4.0) via DB API Marketplace ·
     <a href="/docs">API docs</a> · <a href="/monitoring">daily accuracy series</a>
   </footer>
@@ -90,6 +92,14 @@ const trainLabel = (r) => {
   return `${line} <span class="muted">· ${r.train_number}</span>`;
 };
 
+// DB's own current estimate for a not-yet-departed train (refreshed ~15 min).
+const liveDb = (r) => {
+  if (r.is_canceled) return '<span class="canceled">canceled</span>';
+  if (r.db_live_delay_min == null) return '<span class="muted">—</span>';
+  const cls = r.db_live_delay_min >= 6 ? "late" : "ontime";
+  return `<span class="${cls}">+${r.db_live_delay_min} min</span>`;
+};
+
 function upcomingTable(rows) {
   if (!rows.length) return '<div class="note">No upcoming predictions for this station right now (next fetch cycle runs at :05 past the hour).</div>';
   const tr = withDaySeparators(rows, r => `
@@ -99,11 +109,12 @@ function upcomingTable(rows) {
       <td class="risk ${riskClass(r.delay_probability)}">${Math.round(r.delay_probability * 100)}%</td>
       <td>${r.delay_p50_min.toFixed(0)} min</td>
       <td>${r.delay_p90_min.toFixed(0)} min</td>
+      <td>${liveDb(r)}</td>
       <td class="muted">${r.coverage}</td>
-    </tr>`, 6);
+    </tr>`, 7);
   return `<table><thead><tr>
     <th>Time</th><th>Train</th><th>Delay risk (≥6 min)</th><th>Typical (p50)</th>
-    <th>Bad day (p90)</th><th>Coverage</th></tr></thead><tbody>${tr}</tbody></table>`;
+    <th>Bad day (p90)</th><th>Live (DB)</th><th>Coverage</th></tr></thead><tbody>${tr}</tbody></table>`;
 }
 
 const DEPARTED_PREVIEW = 12;
