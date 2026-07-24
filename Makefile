@@ -1,4 +1,4 @@
-.PHONY: setup lint format typecheck test check data validate ingest features train mlflow-ui serve docker-build docker-run
+.PHONY: setup lint format typecheck test check data validate ingest features train mlflow-ui serve docker-build docker-run live-fetch live-eval retrain
 
 features: ## Build the model-ready feature frame from the canonical dataset
 	uv run python -m dbahn_delay.features.build
@@ -52,3 +52,6 @@ test: ## Run the test suite
 	uv run pytest
 
 check: lint typecheck test ## Run everything CI runs
+
+retrain: ## Check for new data, run championship, report (human approves upload)
+	uv run python -m dbahn_delay.models.retrain

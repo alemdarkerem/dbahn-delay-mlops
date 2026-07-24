@@ -87,6 +87,29 @@ def evaluate(predictions: pl.DataFrame, changes: pl.DataFrame) -> dict[str, floa
     return metrics
 
 
+# Retraining trigger rules, evaluated over the daily series. The trigger
+# ALERTS (surfaced on /monitoring); a human runs `make retrain` — the
+# promotion gate stays human-approved by design.
+ECE_LIMIT = 0.08
+AUC_FLOOR = 0.70
+CONSECUTIVE_DAYS = 3
+FRESHNESS_LIMIT_DAYS = 45
+
+
+def trigger_reasons(series: pl.DataFrame, feature_freshness_days: int | None = None) -> list[str]:
+    """Reasons to retrain, based on the last CONSECUTIVE_DAYS of metrics."""
+    reasons = []
+    tail = series.sort("day").tail(CONSECUTIVE_DAYS)
+    if tail.height >= CONSECUTIVE_DAYS:
+        if "ece" in tail.columns and bool((tail["ece"] > ECE_LIMIT).all()):
+            reasons.append(f"ece > {ECE_LIMIT} for {CONSECUTIVE_DAYS} consecutive days")
+        if "roc_auc" in tail.columns and bool((tail["roc_auc"] < AUC_FLOOR).all()):
+            reasons.append(f"roc_auc < {AUC_FLOOR} for {CONSECUTIVE_DAYS} consecutive days")
+    if feature_freshness_days is not None and feature_freshness_days > FRESHNESS_LIMIT_DAYS:
+        reasons.append(f"feature freshness {feature_freshness_days}d > {FRESHNESS_LIMIT_DAYS}d")
+    return reasons
+
+
 def write_report(day: str, metrics: dict[str, float]) -> None:
     reports_dir = settings.live_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -98,8 +121,27 @@ def write_report(day: str, metrics: dict[str, float]) -> None:
     row = pl.DataFrame([{"day": day, **metrics}])
     if metrics_path.exists():
         existing = pl.read_parquet(metrics_path).filter(pl.col("day") != day)
-        row = pl.concat([existing, row], how="diagonal")
-    row.sort("day").write_parquet(metrics_path)
+        series = pl.concat([existing, row], how="diagonal")
+    else:
+        series = row
+    reasons = trigger_reasons(series)
+    series = series.with_columns(
+        retraining_recommended=pl.when(pl.col("day") == day)
+        .then(pl.lit(bool(reasons)))
+        .otherwise(
+            pl.col("retraining_recommended")
+            if "retraining_recommended" in series.columns
+            else pl.lit(False)
+        ),
+        trigger_reasons=pl.when(pl.col("day") == day)
+        .then(pl.lit("; ".join(reasons)))
+        .otherwise(
+            pl.col("trigger_reasons") if "trigger_reasons" in series.columns else pl.lit("")
+        ),
+    )
+    series.sort("day").write_parquet(metrics_path)
+    if reasons:
+        logger.warning("RETRAINING RECOMMENDED: %s", "; ".join(reasons))
 
 
 def main() -> None:

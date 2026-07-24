@@ -57,8 +57,8 @@ Key principles:
 | 2 | Baseline + first model: features, time-aware CV, MLflow, calibration | ✅ |
 | 3 | Serving: FastAPI, Docker, deploy | ✅ |
 | 4 | Live loop: DB API fetcher, ground truth, monitoring | ✅ |
-| 5 | Automated retraining, champion/challenger, README polish | 🔜 |
-| 6 | Thin demo frontend | 🔜 |
+| 5 | Automated retraining, champion/challenger, README polish | ✅ |
+| 6 | Thin demo frontend (station board live at /) | ✅ |
 
 ## Quickstart
 
@@ -171,6 +171,51 @@ curl https://db-delay-api.keremalemdar.de/monitoring
 
 Documented assumption: a stop never seen in the change feed counts as on time (same
 convention as the dataset's collector). Canceled stops are excluded from delay metrics.
+
+## Retraining & model lifecycle
+
+Two decay modes, two lanes — both measured by the system itself (day-1 monitoring
+caught ECE drifting 0.011 → 0.070 as the feature snapshot aged):
+
+- **Fast lane (daily, on the VPS):** `refresh_snapshot` rebuilds the exact rolling-history
+  statistics from the live loop's own sealed predictions + observed outcomes and serves
+  them as an **overlay** the API prefers over the bundle snapshot. Features stay ≤1 day
+  old between retrains; the model itself is untouched. `/health` reports
+  `feature_freshness_days`.
+- **Slow lane (monthly, on the training machine):** `make retrain` checks the HF dataset
+  for new months, rebuilds the data, and runs a **championship**: a freshly trained
+  challenger vs. the current champion, both predicting the newest month cold. Promotion
+  requires the challenger to hold on *all* of PR-AUC, p90 pinball loss **and calibration**
+  — better ranking never excuses worse calibration. The final upload is a human-approved
+  step by design (model promotion is a deployment decision, and training runs on a
+  bigger machine than the 4 GB VPS).
+
+Threshold triggers watch the daily series (ECE > 0.08 or ROC-AUC < 0.70 for 3 consecutive
+days, or stale features) and raise `retraining_recommended` on `/monitoring`.
+
+## Limitations (honest)
+
+- **105-station panel.** Predictions for other stations degrade to coarser features
+  (`coverage` reports this honestly). All-station data has accumulated since 2025-11 and
+  can widen the panel at a future retrain.
+- **No live network-state features yet.** The model's freshest signal is day-old
+  aggregates; intraday cascades (a train arriving already 60 min late) are invisible —
+  measured on day one as the dominant source of large p90 misses. The live loop already
+  collects the data needed to fix this (top of the roadmap below).
+- **Ground truth arrives with ≤15 min latency** and a stop never seen in the change feed
+  counts as on time (same convention as the source dataset's collector).
+- **Quantiles are slightly optimistic under drift** (p90 coverage 0.87–0.89 vs 0.90
+  target); recalibration is planned rather than silently widened.
+- **Single-collector dependency.** Historical training data comes from one community
+  collector (CC BY 4.0); a collector outage would pause retraining (not serving).
+
+## What I'd do next
+
+1. Live network-state features (train's current inbound delay from the change feed;
+   station-level rolling delay of the last 2 h) — biggest expected accuracy win.
+2. Weather features via Open-Meteo (free): storm days drive the worst tail misses.
+3. Conformal recalibration of p90 to restore exact 0.90 coverage under drift.
+4. Widen the station panel using the all-station era.
 
 ## Data & licensing
 
