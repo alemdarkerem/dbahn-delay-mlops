@@ -71,6 +71,45 @@ def test_refresh_builds_hand_checkable_stats(
     assert entry["join_date"] == NOW.date()
 
 
+def test_refresh_survives_prediction_schema_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the `line` column arrived 2026-07-24, so the lookback mixes
+    old-schema and new-schema prediction files. A plain concat crashed on the
+    width mismatch and silently froze the overlay for three days (caught via
+    feature_freshness_days climbing on /health)."""
+    from dbahn_delay import config
+
+    monkeypatch.setattr(config.settings, "live_dir", tmp_path)
+    seed_live_data(tmp_path)  # old-schema files (no `line` column)
+    day = (NOW - timedelta(days=3)).strftime("%Y-%m-%d")
+    scheduled = NOW - timedelta(days=3, hours=-10)
+    pl.DataFrame(
+        [
+            {
+                "stop_id": "with-line",
+                "station_name": "Berlin Hauptbahnhof",
+                "train_type": "RE",
+                "train_number": "17025",
+                "line": "7",  # new-schema file
+                "scheduled_time": scheduled,
+                "delay_probability": 0.5,
+                "delay_p50_min": 5.0,
+                "delay_p90_min": 20.0,
+                "coverage": "train",
+                "model_version": "test",
+                "predicted_at": scheduled - timedelta(hours=2),
+            }
+        ]
+    ).write_parquet(tmp_path / "predictions" / f"{day}.parquet")
+
+    summary = refresh(now=NOW)
+    assert summary["entities_written"] > 0
+    store = OverlayStore(tmp_path / "snapshot_overlay")
+    assert store.get("train", ("ICE", "1601")) is not None  # old-schema rows kept
+    assert store.get("train", ("RE", "17025")) is not None  # new-schema rows kept
+
+
 def test_overlay_reloads_on_mtime_change(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from dbahn_delay import config
 
