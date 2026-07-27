@@ -45,14 +45,21 @@ def observed_stops(now: datetime) -> pl.DataFrame | None:
     ]
     if not pred_frames:
         return None
-    predictions = pl.concat(pred_frames)
+    # diagonal_relaxed: the prediction schema evolves (the `line` column
+    # arrived 2026-07-24); a plain concat crashes the moment the lookback
+    # spans both eras — which silently froze the overlay for three days.
+    predictions = pl.concat(pred_frames, how="diagonal_relaxed")
     change_frames = [
         pl.read_parquet(p)
         for d in days
         if (p := settings.live_dir / "changes" / f"{d}.parquet").exists()
     ]
     if change_frames:
-        changes = pl.concat(change_frames).sort("observed_at").unique(subset="stop_id", keep="last")
+        changes = (
+            pl.concat(change_frames, how="diagonal_relaxed")
+            .sort("observed_at")
+            .unique(subset="stop_id", keep="last")
+        )
         joined = predictions.join(
             changes.select("stop_id", "changed_time", "is_canceled"), on="stop_id", how="left"
         )
