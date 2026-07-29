@@ -22,6 +22,7 @@ from dbahn_delay.serving.features import assemble_features
 from dbahn_delay.serving.loader import ModelBundle
 from dbahn_delay.serving.network_state import NetworkStateStore
 from dbahn_delay.serving.overlay import OverlayStore
+from dbahn_delay.serving.recalibration import RecalibrationStore
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +91,15 @@ def _network_state_store() -> NetworkStateStore:
     return NetworkStateStore(settings.live_dir)
 
 
+def _recalibration_store() -> RecalibrationStore:
+    from dbahn_delay.config import settings
+
+    return RecalibrationStore(settings.live_dir / "recalibration" / "calibration.json")
+
+
 _overlay = _overlay_store()
 _network_state = _network_state_store()
+_recalibration = _recalibration_store()
 
 
 def bundle_or_503() -> ModelBundle:
@@ -124,6 +132,8 @@ def predict(request: PredictRequest) -> PredictResponse:
     # Quantile crossings can happen with independently trained models; never
     # return an inconsistent pair to the user.
     p90 = max(p90, p50)
+    # Daily drift correction (identity until the first calibration is fitted).
+    prob, p50, p90 = _recalibration.apply(prob, p50, p90)
     return PredictResponse(
         delay_probability=round(prob, 4),
         delay_p50_min=round(p50, 1),
@@ -182,6 +192,7 @@ def model_info() -> dict[str, object]:
     return {
         "metadata": bundle.metadata,
         "snapshot_entities": {k: len(v) for k, v in bundle.stats.items()},
+        "recalibration": _recalibration.info(),  # null = raw model outputs
     }
 
 
