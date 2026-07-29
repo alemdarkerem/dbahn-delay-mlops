@@ -85,6 +85,25 @@ def test_store_aggregates_hand_checked(tmp_path: Path) -> None:
     assert other["type_live_delayed_share_60m"] == 0.0
 
 
+def test_store_summary_reports_current_state(tmp_path: Path) -> None:
+    now = datetime.now(tz=BERLIN)
+    write_live(
+        tmp_path,
+        preds=[
+            {"stop_id": "a", "scheduled_time": now - timedelta(minutes=30)},
+            {"stop_id": "b", "scheduled_time": now - timedelta(minutes=50)},
+        ],
+        changes=[{"stop_id": "b", "changed_time": now - timedelta(minutes=20)}],
+    )
+    summary = NetworkStateStore(tmp_path).summary()
+    assert summary["stations_with_state"] == 1
+    assert summary["network"] == {"mean_delay_60m": 15.0, "delayed_share_60m": 0.5}
+
+    empty = NetworkStateStore(tmp_path / "nowhere").summary()
+    assert empty["stations_with_state"] == 0
+    assert empty["network"] is None
+
+
 def test_store_empty_dir_returns_missing(tmp_path: Path) -> None:
     row = NetworkStateStore(tmp_path).features("Berlin Hbf", "ICE")
     assert row["station_live_mean_delay_60m"] is None
