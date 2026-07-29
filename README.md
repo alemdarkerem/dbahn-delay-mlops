@@ -191,6 +191,16 @@ caught ECE drifting 0.011 → 0.070 as the feature snapshot aged):
   step by design (model promotion is a deployment decision, and training runs on a
   bigger machine than the 4 GB VPS).
 
+- **Output recalibration (daily, on the VPS):** even with fresh features, a tree
+  ensemble cannot extrapolate past its training distribution — when late-July 2026 ran
+  ~10pp hotter than the training window, every probability bucket came out optimistic
+  (diagnosed live via `/network-state` + a board-derived reliability table). Each
+  morning an **isotonic curve** (probabilities) and a **conformal offset** (p90,
+  restoring 0.90 coverage) are fit on the trailing week of sealed outcomes and applied
+  inside `/predict`. Corrections are visible on `/model-info`; once a retrain absorbs
+  the new regime, the fitted curve collapsing back to identity is the built-in
+  self-test.
+
 Threshold triggers watch the daily series (ECE > 0.08 or ROC-AUC < 0.70 for 3 consecutive
 days, or stale features) and raise `retraining_recommended` on `/monitoring`.
 

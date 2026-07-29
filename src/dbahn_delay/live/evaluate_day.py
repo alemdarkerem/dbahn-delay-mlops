@@ -157,6 +157,12 @@ def main() -> None:
     metrics = evaluate(predictions, changes)
     write_report(day, metrics)
     logger.info("report for %s: %s", day, metrics)
+    try:
+        from dbahn_delay.live.recalibrate import rebuild
+
+        rebuild()
+    except Exception:
+        logger.exception("recalibration rebuild failed (report above is unaffected)")
 
 
 if __name__ == "__main__":
