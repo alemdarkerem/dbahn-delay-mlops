@@ -204,6 +204,16 @@ def monitoring() -> dict[str, object]:
     }
 
 
+@app.get("/network-state")
+def network_state() -> dict[str, object]:
+    """The live 60-minute network state exactly as /predict currently sees it.
+
+    Observability endpoint: distinguishes "live features flowing" from
+    "store silently empty (model gets NaN)" without shell access.
+    """
+    return _network_state.summary()
+
+
 @app.get("/stations")
 def stations() -> dict[str, object]:
     """Panel stations available on the board."""

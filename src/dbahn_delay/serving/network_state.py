@@ -138,6 +138,26 @@ class NetworkStateStore:
             logger.exception("network-state refresh failed; keeping previous state")
         self._cache_key = key
 
+    def summary(self) -> dict[str, Any]:
+        """Observability: what the model currently sees as network state.
+
+        Added after the first clean-day report stayed miscalibrated — from
+        the outside there was no way to tell "live features flowing" apart
+        from "store silently empty (all NaN)".
+        """
+        self._refresh_if_stale()
+        st = self._state
+        return {
+            "stations_with_state": len(st.station),
+            "types_with_state": len(st.train_type),
+            "network": None
+            if st.network is None
+            else {
+                "mean_delay_60m": round(st.network[0], 2),
+                "delayed_share_60m": round(st.network[1], 4),
+            },
+        }
+
     def features(self, station_name: str, train_type: str) -> dict[str, Any]:
         """The 7 network-state feature values for one request (None = NaN)."""
         self._refresh_if_stale()
