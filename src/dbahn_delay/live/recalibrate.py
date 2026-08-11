@@ -129,12 +129,36 @@ def fit_calibration(pairs: pl.DataFrame, now: datetime) -> dict[str, Any] | None
     }
 
 
+def drop_stale_calibration(current_version: str) -> None:
+    """Remove a calibration left behind by a previous model.
+
+    Without this, a promotion that does not yet have enough fresh pairs to
+    refit would keep serving the OLD model's correction — and sealed
+    predictions are immutable, so those hours could never be repaired.
+    """
+    path = calibration_path()
+    if not path.exists():
+        return
+    try:
+        stamped = json.loads(path.read_text()).get("model_version")
+    except Exception:
+        stamped = None
+    if stamped != current_version:
+        path.unlink()
+        logger.warning(
+            "dropped calibration fitted for %s (now serving %s)",
+            stamped or "unknown",
+            current_version,
+        )
+
+
 def rebuild(now: datetime | None = None) -> dict[str, Any] | None:
     now = now or datetime.now(tz=BERLIN)
     pairs = collect_pairs(now)
     if pairs is None or pairs.is_empty():
         logger.warning("no live pairs yet - recalibration skipped")
         return None
+    drop_stale_calibration(str(pairs["model_version"][0]))
     calibration = fit_calibration(pairs, now)
     if calibration is None:
         return None
