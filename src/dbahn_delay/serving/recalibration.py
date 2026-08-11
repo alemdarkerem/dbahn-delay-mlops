@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 class RecalibrationStore:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, model_version: str | None = None) -> None:
         self._path = path
+        self._model_version = model_version
         self._mtime: float | None = None
         self._calibration: dict[str, Any] | None = None
 
@@ -34,6 +35,18 @@ class RecalibrationStore:
             assert calibration["curve_x"] and len(calibration["curve_x"]) == len(
                 calibration["curve_y"]
             )
+            fitted_for = calibration.get("model_version")
+            if self._model_version and fitted_for and fitted_for != self._model_version:
+                # Curve belongs to another model (just-promoted bundle):
+                # serve raw outputs until the nightly job refits.
+                logger.warning(
+                    "calibration fitted for %s, serving %s - ignoring",
+                    fitted_for,
+                    self._model_version,
+                )
+                self._calibration = None
+                self._mtime = mtime
+                return
             self._calibration = calibration
             logger.info(
                 "recalibration loaded: created_at=%s n=%s p90_delta=%s",

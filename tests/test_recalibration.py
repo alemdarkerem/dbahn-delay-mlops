@@ -90,6 +90,43 @@ def test_rebuild_keeps_identity_below_min_samples(
     assert not recalibrate.calibration_path().exists()
 
 
+def test_calibration_is_scoped_to_one_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A curve fitted for the previous model must not correct a new one.
+
+    After a promotion the old bias would push the fresh model the wrong way,
+    so pairs are filtered to the newest model version and the serving store
+    ignores a curve stamped with a different version.
+    """
+    from dbahn_delay import config
+
+    monkeypatch.setattr(config.settings, "live_dir", tmp_path)
+    monkeypatch.setattr(recalibrate, "MIN_SAMPLES", 100)
+    seed_biased_day(tmp_path)
+
+    # a handful of stops already sealed by the newly promoted model
+    day = (NOW - timedelta(days=1)).strftime("%Y-%m-%d")
+    path = tmp_path / "predictions" / f"{day}.parquet"
+    old = pl.read_parquet(path)
+    fresh = old.head(120).with_columns(
+        stop_id=pl.col("stop_id") + "-new", model_version=pl.lit("v2-newer")
+    )
+    pl.concat([old, fresh]).write_parquet(path)
+
+    calibration = recalibrate.rebuild(now=NOW)
+    assert calibration is not None
+    assert calibration["model_version"] == "v2-newer"
+    assert calibration["n_samples"] == 120  # old model's pairs excluded
+
+    matching = RecalibrationStore(recalibrate.calibration_path(), model_version="v2-newer")
+    assert matching.apply(0.2, 1.0, 10.0)[0] != 0.2  # correction applies
+
+    stale = RecalibrationStore(recalibrate.calibration_path(), model_version="v3-promoted")
+    assert stale.apply(0.2, 1.0, 10.0) == (0.2, 1.0, 10.0)  # raw outputs
+    assert stale.info() is None
+
+
 def test_store_identity_without_file(tmp_path: Path) -> None:
     store = RecalibrationStore(tmp_path / "calibration.json")
     assert store.apply(0.3, 2.0, 15.0) == (0.3, 2.0, 15.0)

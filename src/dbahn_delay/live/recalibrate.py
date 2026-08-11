@@ -80,7 +80,7 @@ def collect_pairs(now: datetime) -> pl.DataFrame | None:
             changed_time=pl.lit(None, dtype=pl.Datetime("us", "Europe/Berlin")),
             is_canceled=pl.lit(None, dtype=pl.Boolean),
         )
-    return (
+    pairs = (
         joined.with_columns(
             is_canceled=pl.col("is_canceled").fill_null(False),
             actual_delay_min=(pl.col("changed_time") - pl.col("scheduled_time"))
@@ -92,8 +92,16 @@ def collect_pairs(now: datetime) -> pl.DataFrame | None:
             # only settled outcomes (yesterday's file can hold early-today stops)
             pl.col("scheduled_time") < now - timedelta(hours=SETTLED_HOURS),
         )
-        .select("delay_probability", "delay_p90_min", "actual_delay_min")
+        .select("model_version", "delay_probability", "delay_p90_min", "actual_delay_min")
     )
+    # A calibration curve belongs to ONE model: after a promotion the old
+    # model's bias would over-correct the new one. Keep only the newest
+    # model's pairs (the min-sample guard then holds the layer at identity
+    # until enough fresh evidence exists).
+    if pairs.height:
+        current = pairs.sort("model_version").tail(1)["model_version"][0]
+        pairs = pairs.filter(pl.col("model_version") == current)
+    return pairs
 
 
 def fit_calibration(pairs: pl.DataFrame, now: datetime) -> dict[str, Any] | None:
@@ -110,6 +118,7 @@ def fit_calibration(pairs: pl.DataFrame, now: datetime) -> dict[str, Any] | None
     ].to_numpy().astype(np.float64)
     return {
         "created_at": now.isoformat(),
+        "model_version": str(pairs["model_version"][0]),
         "n_samples": pairs.height,
         "lookback_days": LOOKBACK_DAYS,
         "curve_x": [round(float(v), 6) for v in iso.X_thresholds_],

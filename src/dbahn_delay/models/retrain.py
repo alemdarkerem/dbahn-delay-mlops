@@ -187,8 +187,10 @@ def write_report(
             "## Upload runbook",
             "```bash",
             f"scp -r {bundle_path} root@91.98.76.106:/opt/dbahn/models/",
-            f"ssh root@91.98.76.106 'ln -sfn /opt/dbahn/models/{bundle_path.name} "
-            "/opt/dbahn/models/current'",
+            # RELATIVE symlink: the models dir is mounted at /models inside the
+            # container, so an absolute /opt/dbahn/... target dangles there and
+            # the API 503s (incident #2, 2026-07-24).
+            f"ssh root@91.98.76.106 'cd /opt/dbahn/models && ln -sfn {bundle_path.name} current'",
             "# then: Coolify -> Restart (loads the new bundle)",
             "```",
         ]

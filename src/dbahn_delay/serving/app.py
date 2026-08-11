@@ -94,7 +94,10 @@ def _network_state_store() -> NetworkStateStore:
 def _recalibration_store() -> RecalibrationStore:
     from dbahn_delay.config import settings
 
-    return RecalibrationStore(settings.live_dir / "recalibration" / "calibration.json")
+    return RecalibrationStore(
+        settings.live_dir / "recalibration" / "calibration.json",
+        model_version=_bundle.version if _bundle else None,
+    )
 
 
 _overlay = _overlay_store()
