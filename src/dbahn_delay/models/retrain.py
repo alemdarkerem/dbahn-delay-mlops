@@ -191,6 +191,10 @@ def write_report(
             # container, so an absolute /opt/dbahn/... target dangles there and
             # the API 503s (incident #2, 2026-07-24).
             f"ssh root@91.98.76.106 'cd /opt/dbahn/models && ln -sfn {bundle_path.name} current'",
+            # The live calibration curve was fitted for the OUTGOING model;
+            # applying it to a fresher one corrects in the wrong direction
+            # until the nightly job refits (and seals are immutable).
+            "ssh root@91.98.76.106 'rm -f /opt/dbahn/live/recalibration/calibration.json'",
             "# then: Coolify -> Restart (loads the new bundle)",
             "```",
         ]

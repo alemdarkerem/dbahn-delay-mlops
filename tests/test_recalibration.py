@@ -127,6 +127,32 @@ def test_calibration_is_scoped_to_one_model(
     assert stale.info() is None
 
 
+def test_rebuild_drops_calibration_left_by_previous_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A promotion with too few fresh pairs must not keep serving the old
+    model's correction — the stale file is removed rather than left behind."""
+    from dbahn_delay import config
+
+    monkeypatch.setattr(config.settings, "live_dir", tmp_path)
+    seed_biased_day(tmp_path, n=50)  # fewer pairs than MIN_SAMPLES
+    path = recalibrate.calibration_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "model_version": "previous-model",
+                "curve_x": [0.0, 1.0],
+                "curve_y": [0.5, 1.0],
+                "p90_delta_min": 9.0,
+            }
+        )
+    )
+
+    assert recalibrate.rebuild(now=NOW) is None  # cannot refit yet
+    assert not path.exists()  # but the stale curve is gone
+
+
 def test_store_identity_without_file(tmp_path: Path) -> None:
     store = RecalibrationStore(tmp_path / "calibration.json")
     assert store.apply(0.3, 2.0, 15.0) == (0.3, 2.0, 15.0)
