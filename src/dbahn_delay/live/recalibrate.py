@@ -15,9 +15,15 @@ outputs every morning in between:
 
 Model weights untouched. The API reloads the JSON on mtime change and
 applies it inside /predict, so corrected numbers are what gets sealed and
-graded. The feedback loop is intended: once sealed outputs are well
-calibrated, the fitted curve approaches identity and the offset shrinks
-to zero — a built-in self-test (watch it after each retrain).
+graded — but the fit always uses the model's RAW outputs, which are sealed
+alongside them. Fitting on corrected outputs while applying the result to
+raw ones is a composition error: each day's curve then measures only the
+*residual* bias, under-corrects when applied to raw predictions, and the
+loop oscillates (seen live 2026-08: ECE 0.021 -> 0.066 over a week).
+
+With raw-fitting the curve is a genuine self-test: after a retrain absorbs
+a regime, the fresh model needs less correction and the fitted curve
+flattens on its own.
 
 Runs as the tail of the morning evaluation; standalone:
 ``python -m dbahn_delay.live.recalibrate``
@@ -80,19 +86,29 @@ def collect_pairs(now: datetime) -> pl.DataFrame | None:
             changed_time=pl.lit(None, dtype=pl.Datetime("us", "Europe/Berlin")),
             is_canceled=pl.lit(None, dtype=pl.Boolean),
         )
+    # Fit on the model's RAW outputs, never on the corrected ones it produced
+    # under yesterday's curve: fitting on corrected values and applying the
+    # result to raw ones under-corrects, and the daily loop oscillates
+    # (observed 2026-08: ECE 0.021 -> 0.066 creep). Older rows have no raw
+    # columns; there the sealed values ARE raw (no calibration was active).
+    for col in ("raw_delay_probability", "raw_delay_p90_min"):
+        if col not in joined.columns:
+            joined = joined.with_columns(pl.lit(None, dtype=pl.Float64).alias(col))
     pairs = (
         joined.with_columns(
             is_canceled=pl.col("is_canceled").fill_null(False),
             actual_delay_min=(pl.col("changed_time") - pl.col("scheduled_time"))
             .dt.total_minutes()
             .fill_null(0),
+            model_probability=pl.coalesce("raw_delay_probability", "delay_probability"),
+            model_p90_min=pl.coalesce("raw_delay_p90_min", "delay_p90_min"),
         )
         .filter(
             ~pl.col("is_canceled"),
             # only settled outcomes (yesterday's file can hold early-today stops)
             pl.col("scheduled_time") < now - timedelta(hours=SETTLED_HOURS),
         )
-        .select("model_version", "delay_probability", "delay_p90_min", "actual_delay_min")
+        .select("model_version", "model_probability", "model_p90_min", "actual_delay_min")
     )
     # A calibration curve belongs to ONE model: after a promotion the old
     # model's bias would over-correct the new one. Keep only the newest
@@ -110,11 +126,11 @@ def fit_calibration(pairs: pl.DataFrame, now: datetime) -> dict[str, Any] | None
         return None
     from sklearn.isotonic import IsotonicRegression
 
-    prob = pairs["delay_probability"].to_numpy().astype(np.float64)
+    prob = pairs["model_probability"].to_numpy().astype(np.float64)
     outcome = (pairs["actual_delay_min"] >= DELAYED_THRESHOLD_MIN).to_numpy().astype(np.float64)
     iso = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip").fit(prob, outcome)
     residuals = pairs["actual_delay_min"].to_numpy().astype(np.float64) - pairs[
-        "delay_p90_min"
+        "model_p90_min"
     ].to_numpy().astype(np.float64)
     return {
         "created_at": now.isoformat(),

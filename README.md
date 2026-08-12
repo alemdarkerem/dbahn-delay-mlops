@@ -197,9 +197,13 @@ caught ECE drifting 0.011 → 0.070 as the feature snapshot aged):
   (diagnosed live via `/network-state` + a board-derived reliability table). Each
   morning an **isotonic curve** (probabilities) and a **conformal offset** (p90,
   restoring 0.90 coverage) are fit on the trailing week of sealed outcomes and applied
-  inside `/predict`. Corrections are visible on `/model-info`; once a retrain absorbs
-  the new regime, the fitted curve collapsing back to identity is the built-in
-  self-test.
+  inside `/predict`. Each prediction seals the model's raw numbers next to the
+  corrected ones, and the fit always uses the raw ones — fitting on corrected outputs
+  while applying the result to raw ones only measures the *residual* bias, so the loop
+  under-corrects and oscillates (live evidence: ECE 0.021 → 0.066 over the week before
+  this was fixed). The daily report scores both, so `ece` vs `ece_raw` is a standing
+  measurement of what the layer contributes; corrections are visible on `/model-info`,
+  and a curve that flattens after a retrain is the built-in self-test.
 
 Threshold triggers watch the daily series (ECE > 0.08 or ROC-AUC < 0.70 for 3 consecutive
 days, or stale features) and raise `retraining_recommended` on `/monitoring`.

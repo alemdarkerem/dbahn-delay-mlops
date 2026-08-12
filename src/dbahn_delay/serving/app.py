@@ -48,6 +48,13 @@ class PredictResponse(BaseModel):
         description="Feature coverage: train | station_type | type | cold (fallback depth)"
     )
     model_version: str
+    # The model's own numbers before the daily drift correction. Sealed
+    # alongside the corrected ones so tomorrow's curve is always fitted on
+    # RAW outputs — fitting on corrected outputs and applying the result to
+    # raw ones made the correction oscillate. Null when no calibration is
+    # active (then the fields above are already raw).
+    raw_delay_probability: float | None = None
+    raw_delay_p90_min: float | None = None
 
 
 class HealthResponse(BaseModel):
@@ -136,13 +143,17 @@ def predict(request: PredictRequest) -> PredictResponse:
     # return an inconsistent pair to the user.
     p90 = max(p90, p50)
     # Daily drift correction (identity until the first calibration is fitted).
+    raw_prob, raw_p90 = prob, p90
     prob, p50, p90 = _recalibration.apply(prob, p50, p90)
+    corrected = (prob, p90) != (raw_prob, raw_p90)
     return PredictResponse(
         delay_probability=round(prob, 4),
         delay_p50_min=round(p50, 1),
         delay_p90_min=round(p90, 1),
         coverage=coverage,
         model_version=bundle.version,
+        raw_delay_probability=round(raw_prob, 4) if corrected else None,
+        raw_delay_p90_min=round(raw_p90, 1) if corrected else None,
     )
 
 
