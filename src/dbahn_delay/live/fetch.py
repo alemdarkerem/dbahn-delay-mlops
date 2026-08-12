@@ -86,6 +86,11 @@ def predict_stops(
                 "delay_probability": result["delay_probability"],
                 "delay_p50_min": result["delay_p50_min"],
                 "delay_p90_min": result["delay_p90_min"],
+                # what the model said before the daily correction (null when
+                # no calibration was active) — tomorrow's curve is fitted on
+                # these, never on the corrected values it produced itself
+                "raw_delay_probability": result.get("raw_delay_probability"),
+                "raw_delay_p90_min": result.get("raw_delay_p90_min"),
                 "coverage": result["coverage"],
                 "model_version": result["model_version"],
                 "predicted_at": predicted_at,

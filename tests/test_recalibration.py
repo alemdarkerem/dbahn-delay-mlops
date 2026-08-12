@@ -127,6 +127,39 @@ def test_calibration_is_scoped_to_one_model(
     assert stale.info() is None
 
 
+def test_fit_uses_raw_outputs_not_corrected_ones(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the curve must learn from what the MODEL said, not from
+    what yesterday's correction turned it into. Fitting on corrected values
+    and applying the result to raw ones under-corrects, and the daily loop
+    oscillates (ECE 0.021 -> 0.066 over a week, live 2026-08)."""
+    from dbahn_delay import config
+
+    monkeypatch.setattr(config.settings, "live_dir", tmp_path)
+    monkeypatch.setattr(recalibrate, "MIN_SAMPLES", 100)
+    seed_biased_day(tmp_path)
+
+    # Rows sealed under an active calibration: the model said 20%, the
+    # correction shipped 50%, and 50% of them were indeed late.
+    day = (NOW - timedelta(days=1)).strftime("%Y-%m-%d")
+    path = tmp_path / "predictions" / f"{day}.parquet"
+    pl.read_parquet(path).with_columns(
+        delay_probability=pl.lit(0.5),
+        delay_p90_min=pl.lit(20.0),
+        raw_delay_probability=pl.lit(0.2),
+        raw_delay_p90_min=pl.lit(10.0),
+    ).write_parquet(path)
+
+    recalibrate.rebuild(now=NOW)
+    store = RecalibrationStore(recalibrate.calibration_path())
+    prob, _, p90 = store.apply(0.2, 1.0, 10.0)
+    # Fitted on the raw 20% -> still maps to the realized 50% (a fit on the
+    # corrected 50% would have produced a near-identity curve instead).
+    assert abs(prob - 0.5) < 0.01
+    assert 19.0 <= p90 <= 21.0
+
+
 def test_rebuild_drops_calibration_left_by_previous_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

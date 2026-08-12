@@ -13,7 +13,9 @@
       "delay_p50_min": 11.6,
       "delay_p90_min": 29.1,
       "coverage": "train",
-      "model_version": "fixture-0"
+      "model_version": "fixture-0",
+      "raw_delay_probability": null,
+      "raw_delay_p90_min": null
     }
   },
   {
@@ -29,7 +31,9 @@
       "delay_p50_min": 1.9,
       "delay_p90_min": 19.3,
       "coverage": "train",
-      "model_version": "fixture-0"
+      "model_version": "fixture-0",
+      "raw_delay_probability": null,
+      "raw_delay_p90_min": null
     }
   },
   {
@@ -46,7 +50,9 @@
       "delay_p50_min": 2.0,
       "delay_p90_min": 19.7,
       "coverage": "train",
-      "model_version": "fixture-0"
+      "model_version": "fixture-0",
+      "raw_delay_probability": null,
+      "raw_delay_p90_min": null
     }
   }
 ]

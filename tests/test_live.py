@@ -1,6 +1,6 @@
 """Tests for the live loop: XML parsing, sealed logging, daily evaluation."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -190,3 +190,52 @@ def test_evaluate_day_metrics_hand_checked() -> None:
     assert metrics["coverage_p90"] == 1.0
     # MAE of p50=4: |0-4|=4 and |12-4|=8 -> mean 6
     assert metrics["mae_p50"] == 6.0
+
+
+def test_evaluate_reports_uncorrected_metrics() -> None:
+    """The daily report quantifies what the calibration layer contributed:
+    rows sealed under an active correction also carry the model's raw
+    numbers, so the same day can be scored both ways."""
+    n = 200
+    now = datetime(2026, 8, 12, 16, 0, tzinfo=BERLIN)
+    predictions = pl.DataFrame(
+        [
+            {
+                "stop_id": f"s{i}",
+                "station_name": "Berlin Hbf",
+                "train_type": "ICE",
+                "train_number": str(i),
+                "scheduled_time": now,
+                "delay_probability": 0.5,  # corrected
+                "delay_p50_min": 2.0,
+                "delay_p90_min": 25.0,  # corrected: covers every actual
+                "delay_p90_min_unused": 0.0,
+                "coverage": "train",
+                "model_version": "test",
+                "predicted_at": now - timedelta(hours=2),
+                "raw_delay_probability": 0.2,  # what the model said
+                "raw_delay_p90_min": 5.0,  # raw: covers nothing
+            }
+            for i in range(n)
+        ]
+    ).drop("delay_p90_min_unused")
+    changes = pl.DataFrame(
+        [
+            {
+                "stop_id": f"s{i}",
+                "changed_time": now + timedelta(minutes=20),
+                "is_canceled": False,
+                "observed_at": now + timedelta(hours=1),
+            }
+            for i in range(0, n, 2)  # half of them 20 min late
+        ],
+        schema_overrides={"changed_time": pl.Datetime("us", "Europe/Berlin")},
+    )
+    metrics = evaluate(predictions, changes)
+    assert metrics["n_corrected"] == float(n)
+    # corrected p90=25 covers all; raw p90=5 covers only the on-time half
+    assert metrics["coverage_p90"] == 1.0
+    assert metrics["coverage_p90_raw"] == 0.5
+    # corrected 0.5 matches the realized 0.5; raw 0.2 is 30pp off
+    assert metrics["ece"] < 0.01
+    assert abs(metrics["ece_raw"] - 0.3) < 0.01

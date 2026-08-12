@@ -12,6 +12,7 @@ Runs every morning for the previous day:
 import logging
 import sys
 from datetime import date, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -84,7 +85,33 @@ def evaluate(predictions: pl.DataFrame, changes: pl.DataFrame) -> dict[str, floa
         else:
             metrics["base_rate"] = float(y_true.mean())
         metrics.update(quantile_metrics(y_delay, p50, p90))
+        metrics.update(uncorrected_metrics(usable, y_true, y_delay))
     return metrics
+
+
+def uncorrected_metrics(
+    usable: pl.DataFrame, y_true: "np.ndarray[Any, Any]", y_delay: "np.ndarray[Any, Any]"
+) -> dict[str, float]:
+    """What the day would have looked like WITHOUT the daily correction.
+
+    Only computable for rows sealed while a calibration was active (those
+    carry the model's raw outputs); the gap to the headline metrics is the
+    layer's measured contribution.
+    """
+    if "raw_delay_probability" not in usable.columns:
+        return {}
+    rows = usable.filter(pl.col("raw_delay_probability").is_not_null())
+    if rows.height < 100:
+        return {}
+    mask = usable["raw_delay_probability"].is_not_null().to_numpy()
+    raw_prob = rows["raw_delay_probability"].to_numpy().astype(np.float64)
+    raw_p90 = rows["raw_delay_p90_min"].to_numpy().astype(np.float64)
+    out: dict[str, float] = {"n_corrected": float(rows.height)}
+    truth = y_true[mask]
+    if 0.0 < truth.mean() < 1.0:
+        out["ece_raw"] = classification_metrics(truth, raw_prob)["ece"]
+    out["coverage_p90_raw"] = float((y_delay[mask] <= raw_p90).mean())
+    return out
 
 
 # Retraining trigger rules, evaluated over the daily series. The trigger
