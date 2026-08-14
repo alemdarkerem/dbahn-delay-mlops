@@ -109,6 +109,12 @@ def _recalibration_store() -> RecalibrationStore:
 
 _overlay = _overlay_store()
 _network_state = _network_state_store()
+
+# How often each feature reaches the model as null, since process start.
+# train_line_station_num sat at 100% for three weeks — never null in
+# training, always null in production — and nothing surfaced it.
+_null_counts: dict[str, int] = {}
+_predict_calls = 0
 _recalibration = _recalibration_store()
 
 
@@ -135,6 +141,12 @@ def predict(request: PredictRequest) -> PredictResponse:
         overlay=_overlay,
         network_state=_network_state,
     )
+    global _predict_calls
+    _predict_calls += 1
+    for name in bundle.metadata["features"]:
+        if row.get(name) is None:
+            _null_counts[name] = _null_counts.get(name, 0) + 1
+
     x = feature_matrix(bundle, row)
     prob = float(bundle.clf.predict(x)[0])
     p50 = max(0.0, float(bundle.q50.predict(x)[0]))
@@ -207,6 +219,15 @@ def model_info() -> dict[str, object]:
         "metadata": bundle.metadata,
         "snapshot_entities": {k: len(v) for k, v in bundle.stats.items()},
         "recalibration": _recalibration.info(),  # null = raw model outputs
+        # Share of served requests where each feature reached the model as
+        # null. A feature that is dense in training but null here is a
+        # train/serve skew — silent until it is counted.
+        "feature_null_rate": (
+            {k: round(v / _predict_calls, 3) for k, v in sorted(_null_counts.items())}
+            if _predict_calls
+            else {}
+        ),
+        "predictions_served": _predict_calls,
     }
 
 

@@ -1,5 +1,6 @@
 """Tests for the live loop: XML parsing, sealed logging, daily evaluation."""
 
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -28,6 +29,11 @@ PLAN_XML = """<?xml version='1.0' encoding='UTF-8'?>
     <tl f="N" t="p" o="800165" c="RE" n="17025"/>
     <dp pt="2607231850" pp="2" l="7" ppth="Karlsruhe Hbf"/>
   </s>
+  <s id="mid-journey">
+    <tl f="F" t="p" o="80" c="ICE" n="777"/>
+    <ar pt="2607231900" pp="5" ppth="München Hbf|Nürnberg Hbf|Erfurt Hbf"/>
+    <dp pt="2607231905" pp="5" ppth="Hamburg Hbf"/>
+  </s>
   <s id="broken-no-time"><tl c="RE" n="1"/><dp pp="1"/></s>
 </timetable>"""
 
@@ -41,7 +47,7 @@ CHANGES_XML = """<?xml version='1.0' encoding='UTF-8'?>
 
 def test_parse_plan_extracts_stops_and_skips_broken() -> None:
     stops = parse_plan(PLAN_XML)
-    assert len(stops) == 3  # broken row without pt skipped
+    assert len(stops) == 4  # broken row without pt skipped
     re7 = next(st for st in stops if st.stop_id == "re7-line-label")
     assert re7.line == "7"  # passenger-facing label captured
     assert re7.train_number == "17025"
@@ -239,3 +245,53 @@ def test_evaluate_reports_uncorrected_metrics() -> None:
     # corrected 0.5 matches the realized 0.5; raw 0.2 is 30pp off
     assert metrics["ece"] < 0.01
     assert abs(metrics["ece_raw"] - 0.3) < 0.01
+
+
+def test_parse_plan_derives_journey_position() -> None:
+    """train_line_station_num is the model's 3rd-strongest feature and is
+    never null in training, so serving must supply it: the arrival path
+    gives the stop's position in the journey."""
+    by_id = {s.stop_id: s for s in parse_plan(PLAN_XML)}
+    # 3 stations travelled through before this one -> 4th stop
+    assert by_id["mid-journey"].station_num == 4
+    # arrival with a single previous station -> 2nd stop
+    assert by_id["2173268028498717892-2607231634-2"].station_num == 2
+    # departure only: the train starts here
+    assert by_id["-1854738006003716349-2607231847-1"].station_num == 1
+
+
+def test_api_predictor_sends_station_num() -> None:
+    """Regression: the fetcher used to omit train_line_station_num, so every
+    live prediction fed the model a NaN it had never seen in training."""
+    import httpx
+
+    from dbahn_delay.live.fetch import api_predictor
+    from dbahn_delay.live.parse import PlannedStop
+
+    sent: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "delay_probability": 0.4,
+                "delay_p50_min": 2.0,
+                "delay_p90_min": 12.0,
+                "coverage": "train",
+                "model_version": "test",
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        stop = PlannedStop(
+            "s1",
+            "Berlin Hbf",
+            "ICE",
+            "542",
+            datetime(2026, 7, 23, 18, 47, tzinfo=BERLIN),
+            True,
+            station_num=7,
+        )
+        assert api_predictor(client)(stop) is not None
+    assert sent["train_line_station_num"] == 7

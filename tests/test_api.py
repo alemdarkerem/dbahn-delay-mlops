@@ -104,3 +104,16 @@ def test_golden_predictions(client: TestClient) -> None:
         response = client.post("/predict", json=case["request"])
         assert response.status_code == 200
         assert response.json() == case["expected"], f"golden mismatch for {case['name']}"
+
+
+def test_model_info_reports_feature_null_rate(client: TestClient) -> None:
+    """A dense-in-training feature arriving null is a train/serve skew;
+    /model-info counts it so it cannot stay invisible again."""
+    client.post("/predict", json=base_request())  # station num supplied
+    omitted = {k: v for k, v in base_request().items() if k != "train_line_station_num"}
+    client.post("/predict", json=omitted)
+    body = client.get("/model-info").json()
+    rates = body["feature_null_rate"]
+    assert body["predictions_served"] >= 2
+    assert 0.0 < rates["train_line_station_num"] < 1.0  # only the omitted call
+    assert "station_name" not in rates  # never null -> never counted
