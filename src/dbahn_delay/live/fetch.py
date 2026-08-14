@@ -55,6 +55,10 @@ def api_predictor(http: httpx.Client) -> PredictFn:
                     "train_type": stop.train_type,
                     "train_number": stop.train_number,
                     "scheduled_time": stop.scheduled_time.isoformat(),
+                    # Third-strongest feature (6.9% gain) and NEVER null in
+                    # training — omitting it here fed the model a value it had
+                    # never seen on every single live prediction.
+                    "train_line_station_num": stop.station_num,
                 },
                 timeout=10.0,
             )
@@ -180,6 +184,7 @@ def run_cycle(now: datetime | None = None, predict: PredictFn | None = None) -> 
                                 scheduled_time=stop.scheduled_time,
                                 has_departure=stop.has_departure,
                                 line=stop.line,
+                                station_num=stop.station_num,
                             )
                         )
                 all_changes.extend(parse_changes(client.fetch_changes(info["eva"])))

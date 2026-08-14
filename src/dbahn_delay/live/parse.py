@@ -22,6 +22,7 @@ class PlannedStop:
     scheduled_time: datetime  # departure preferred, else arrival (schedule semantics)
     has_departure: bool
     line: str | None = None  # passenger-facing line label ("7", "RE5", "FEX")
+    station_num: int | None = None  # position of this stop in the journey (1-based)
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,20 @@ class Change:
 def parse_ts(value: str) -> datetime:
     """YYMMDDHHMM (Berlin wall-clock) -> tz-aware datetime."""
     return datetime.strptime(value, "%y%m%d%H%M").replace(tzinfo=BERLIN)
+
+
+def journey_position(ar: ET.Element | None) -> int | None:
+    """Which stop of the journey this is — the training feature
+    ``train_line_station_num`` (1-based, counting every scheduled stop).
+
+    The arrival element's ``ppth`` lists the stations travelled through to
+    get here, so the position is that count plus one; a stop with no arrival
+    is the origin. Without ``ppth`` the position is unknown (null, as before).
+    """
+    if ar is None:
+        return 1  # departure only -> the train starts here
+    path = ar.attrib.get("ppth")
+    return len(path.split("|")) + 1 if path else None
 
 
 def parse_plan(xml_text: str) -> list[PlannedStop]:
@@ -60,6 +75,7 @@ def parse_plan(xml_text: str) -> list[PlannedStop]:
                 scheduled_time=parse_ts(pt),
                 has_departure=dp is not None,
                 line=event.attrib.get("l"),
+                station_num=journey_position(ar),
             )
         )
     return stops
