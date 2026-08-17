@@ -25,6 +25,14 @@ With raw-fitting the curve is a genuine self-test: after a retrain absorbs
 a regime, the fresh model needs less correction and the fitted curve
 flattens on its own.
 
+The correction also has to EARN its place. It is fitted on the older part
+of the window and scored against doing nothing on the most recent day; a
+half that does not beat raw outputs there is neutralised, and if neither
+half helps the calibration file is removed entirely. Without that gate the
+layer keeps "fixing" a model that has already been repaired — live on
+2026-08-15 the raw model scored ECE 0.009 while the stale curve pushed it
+to 0.088.
+
 Runs as the tail of the morning evaluation; standalone:
 ``python -m dbahn_delay.live.recalibrate``
 """
@@ -41,6 +49,7 @@ import polars as pl
 
 from dbahn_delay.config import settings
 from dbahn_delay.features.build import DELAYED_THRESHOLD_MIN
+from dbahn_delay.models.evaluate import classification_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +117,13 @@ def collect_pairs(now: datetime) -> pl.DataFrame | None:
             # only settled outcomes (yesterday's file can hold early-today stops)
             pl.col("scheduled_time") < now - timedelta(hours=SETTLED_HOURS),
         )
-        .select("model_version", "model_probability", "model_p90_min", "actual_delay_min")
+        .select(
+            "model_version",
+            "scheduled_time",
+            "model_probability",
+            "model_p90_min",
+            "actual_delay_min",
+        )
     )
     # A calibration curve belongs to ONE model: after a promotion the old
     # model's bias would over-correct the new one. Keep only the newest
@@ -120,10 +135,8 @@ def collect_pairs(now: datetime) -> pl.DataFrame | None:
     return pairs
 
 
-def fit_calibration(pairs: pl.DataFrame, now: datetime) -> dict[str, Any] | None:
-    if pairs.height < MIN_SAMPLES:
-        logger.warning("only %d settled pairs (< %d) - keeping identity", pairs.height, MIN_SAMPLES)
-        return None
+def fit_curve(pairs: pl.DataFrame) -> tuple[list[float], list[float], float]:
+    """Isotonic probability curve + conformal p90 offset from these pairs."""
     from sklearn.isotonic import IsotonicRegression
 
     prob = pairs["model_probability"].to_numpy().astype(np.float64)
@@ -132,16 +145,88 @@ def fit_calibration(pairs: pl.DataFrame, now: datetime) -> dict[str, Any] | None
     residuals = pairs["actual_delay_min"].to_numpy().astype(np.float64) - pairs[
         "model_p90_min"
     ].to_numpy().astype(np.float64)
+    return (
+        [round(float(v), 6) for v in iso.X_thresholds_],
+        [round(float(v), 6) for v in iso.y_thresholds_],
+        # negative when the model over-covers: shrinking is honest too
+        round(float(np.quantile(residuals, TARGET_COVERAGE)), 2),
+    )
+
+
+def validate(
+    holdout: pl.DataFrame, curve_x: list[float], curve_y: list[float], p90_delta: float
+) -> dict[str, Any]:
+    """Score the candidate correction against doing nothing, out of sample.
+
+    The layer exists to fix a miscalibrated model; when the model is fine
+    (after a retrain, or after a train/serve skew is repaired) the same
+    correction actively harms — seen live 2026-08-15: raw ECE 0.009,
+    corrected 0.088. So each half must beat raw on unseen days or it is
+    dropped, exactly like the champion/challenger promotion gate.
+    """
+    prob = holdout["model_probability"].to_numpy().astype(np.float64)
+    p90 = holdout["model_p90_min"].to_numpy().astype(np.float64)
+    actual = holdout["actual_delay_min"].to_numpy().astype(np.float64)
+    outcome = (actual >= DELAYED_THRESHOLD_MIN).astype(np.float64)
+
+    ece_raw = classification_metrics(outcome, prob)["ece"]
+    ece_corrected = classification_metrics(outcome, np.interp(prob, curve_x, curve_y))["ece"]
+    cov_raw = float((actual <= p90).mean())
+    cov_corrected = float((actual <= p90 + p90_delta).mean())
+    return {
+        "ece_raw": round(ece_raw, 4),
+        "ece_corrected": round(ece_corrected, 4),
+        "coverage_raw": round(cov_raw, 4),
+        "coverage_corrected": round(cov_corrected, 4),
+        "n_holdout": holdout.height,
+        "probability_correction_helps": bool(ece_corrected < ece_raw),
+        "p90_correction_helps": bool(
+            abs(cov_corrected - TARGET_COVERAGE) < abs(cov_raw - TARGET_COVERAGE)
+        ),
+    }
+
+
+def fit_calibration(pairs: pl.DataFrame, now: datetime) -> dict[str, Any] | None:
+    if pairs.height < MIN_SAMPLES:
+        logger.warning("only %d settled pairs (< %d) - keeping identity", pairs.height, MIN_SAMPLES)
+        return None
+
+    # Hold out the most recent day: a correction learned on older evidence
+    # has to prove itself on days it has not seen.
+    cutoff = now - timedelta(days=1)
+    fit_part = pairs.filter(pl.col("scheduled_time") < cutoff)
+    holdout = pairs.filter(pl.col("scheduled_time") >= cutoff)
+    if fit_part.height < MIN_SAMPLES // 2 or holdout.height < MIN_SAMPLES // 4:
+        logger.warning(
+            "cannot split for validation (fit=%d, holdout=%d) - keeping identity",
+            fit_part.height,
+            holdout.height,
+        )
+        return None
+
+    candidate_x, candidate_y, candidate_delta = fit_curve(fit_part)
+    checks = validate(holdout, candidate_x, candidate_y, candidate_delta)
+    if not (checks["probability_correction_helps"] or checks["p90_correction_helps"]):
+        logger.warning("correction does not beat raw outputs on the holdout: %s", checks)
+        return None
+
+    # Earned its place: refit on everything, then neutralise the half that
+    # did not help (identity curve / zero offset).
+    curve_x, curve_y, p90_delta = fit_curve(pairs)
+    if not checks["probability_correction_helps"]:
+        curve_x, curve_y = [0.0, 1.0], [0.0, 1.0]
+    if not checks["p90_correction_helps"]:
+        p90_delta = 0.0
     return {
         "created_at": now.isoformat(),
         "model_version": str(pairs["model_version"][0]),
         "n_samples": pairs.height,
         "lookback_days": LOOKBACK_DAYS,
-        "curve_x": [round(float(v), 6) for v in iso.X_thresholds_],
-        "curve_y": [round(float(v), 6) for v in iso.y_thresholds_],
-        # negative when the model over-covers: shrinking is honest too
-        "p90_delta_min": round(float(np.quantile(residuals, TARGET_COVERAGE)), 2),
+        "curve_x": curve_x,
+        "curve_y": curve_y,
+        "p90_delta_min": p90_delta,
         "target_coverage": TARGET_COVERAGE,
+        "validation": checks,
     }
 
 
@@ -177,6 +262,11 @@ def rebuild(now: datetime | None = None) -> dict[str, Any] | None:
     drop_stale_calibration(str(pairs["model_version"][0]))
     calibration = fit_calibration(pairs, now)
     if calibration is None:
+        # No correction earned its place today: stand down rather than keep
+        # yesterday's, which may now be doing harm.
+        if calibration_path().exists():
+            calibration_path().unlink()
+            logger.warning("no correction beats raw outputs - calibration removed")
         return None
     path = calibration_path()
     path.parent.mkdir(parents=True, exist_ok=True)
