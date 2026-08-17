@@ -202,8 +202,13 @@ caught ECE drifting 0.011 → 0.070 as the feature snapshot aged):
   while applying the result to raw ones only measures the *residual* bias, so the loop
   under-corrects and oscillates (live evidence: ECE 0.021 → 0.066 over the week before
   this was fixed). The daily report scores both, so `ece` vs `ece_raw` is a standing
-  measurement of what the layer contributes; corrections are visible on `/model-info`,
-  and a curve that flattens after a retrain is the built-in self-test.
+  measurement of what the layer contributes; corrections are visible on `/model-info`.
+  The correction also has to **earn its place**: it is fitted on the older part of the
+  window and scored against doing nothing on a held-out day, and a half that does not
+  beat the raw outputs there is dropped — if neither half helps, the layer stands down
+  entirely. That gate matters as much as the correction: once a train/serve skew was
+  repaired the raw model reached ECE 0.009 live while the stale curve was pushing it
+  to 0.088.
 
 Threshold triggers watch the daily series (ECE > 0.08 or ROC-AUC < 0.70 for 3 consecutive
 days, or stale features) and raise `retraining_recommended` on `/monitoring`.
